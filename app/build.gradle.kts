@@ -14,8 +14,13 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        // Set this to your deployed auth backend (HTTPS, no trailing slash).
+        buildConfigField("String", "API_BASE_URL", "\"https://YOUR-BACKEND-URL\"")
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

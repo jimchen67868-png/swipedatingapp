@@ -17,7 +17,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun AppNav(vm: AppViewModel = viewModel()) {
+fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val deck by vm.deck.collectAsStateWithLifecycle()
@@ -48,7 +48,7 @@ fun AppNav(vm: AppViewModel = viewModel()) {
         NavHost(nav, startDestination = "swipe", modifier = Modifier.padding(pad)) {
             composable("swipe") { SwipeScreen(deck, vm::onSwiped) }
             composable("matches") {
-                MatchesScreen(matches, chats, onOpen = { nav.navigate("chat/${it.id}") })
+                MatchesScreen(matches, chats, onOpen = { nav.navigate("chat/${it.id}") }, onLogout = onLogout)
             }
             composable("chat/{id}") { entry ->
                 val id = entry.arguments?.getString("id").orEmpty()
