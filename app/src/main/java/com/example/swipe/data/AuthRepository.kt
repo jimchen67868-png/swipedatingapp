@@ -9,16 +9,20 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class StartResult(val ref: String, val link: String)
+
 class AuthRepository(context: Context) {
     private val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
     val token: String? get() = prefs.getString("token", null)
 
-    suspend fun start(phone: String): Result<Unit> =
-        post("/auth/start", JSONObject().put("phone", phone)).map { }
+    suspend fun start(phone: String): Result<StartResult> =
+        post("/auth/start", JSONObject().put("phone", phone)).map {
+            StartResult(it.getString("ref"), it.getString("link"))
+        }
 
-    suspend fun verify(phone: String, code: String): Result<Unit> =
-        post("/auth/verify", JSONObject().put("phone", phone).put("code", code)).mapCatching {
+    suspend fun verify(ref: String, code: String): Result<Unit> =
+        post("/auth/verify", JSONObject().put("ref", ref).put("code", code)).mapCatching {
             prefs.edit().putString("token", it.getString("token")).apply()
         }
 

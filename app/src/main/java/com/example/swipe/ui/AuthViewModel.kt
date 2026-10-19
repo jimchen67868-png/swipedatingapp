@@ -16,6 +16,8 @@ data class AuthUi(
     val loggedIn: Boolean,
     val step: AuthStep = AuthStep.PHONE,
     val phone: String = "",
+    val ref: String = "",
+    val link: String = "",
     val loading: Boolean = false,
     val error: String? = null
 )
@@ -34,7 +36,11 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             repo.start(phone)
-                .onSuccess { _ui.update { it.copy(step = AuthStep.CODE, phone = phone, loading = false) } }
+                .onSuccess { r ->
+                    _ui.update { s ->
+                        s.copy(step = AuthStep.CODE, phone = phone, ref = r.ref, link = r.link, loading = false)
+                    }
+                }
                 .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
         }
     }
@@ -42,7 +48,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     fun verify(code: String) {
         _ui.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            repo.verify(_ui.value.phone, code)
+            repo.verify(_ui.value.ref, code)
                 .onSuccess { _ui.update { it.copy(loggedIn = true, loading = false) } }
                 .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
         }
