@@ -20,6 +20,7 @@ data class AuthUi(
     val loggedIn: Boolean,
     val step: AuthStep = AuthStep.START,
     val link: String = "",
+    val autoOpen: Boolean = false,   // true only right after the user taps Continue
     val loading: Boolean = false,
     val error: String? = null
 )
@@ -30,12 +31,21 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<AuthUi> = _ui.asStateFlow()
     private var pollJob: Job? = null
 
+    init {
+        // Android may have closed the app while the user was in Telegram: pick the login back up.
+        val secret = repo.pendingSecret
+        if (repo.token == null && secret != null) {
+            _ui.update { it.copy(step = AuthStep.WAITING, link = repo.pendingLink.orEmpty()) }
+            poll(secret)
+        }
+    }
+
     fun start() {
         _ui.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             repo.start()
                 .onSuccess { r ->
-                    _ui.update { s -> s.copy(step = AuthStep.WAITING, link = r.link, loading = false) }
+                    _ui.update { s -> s.copy(step = AuthStep.WAITING, link = r.link, autoOpen = true, loading = false) }
                     poll(r.secret)
                 }
                 .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message ?: "Network error") } }
@@ -57,7 +67,8 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
                 result.onFailure { e ->
                     // Server said no (expired etc.): stop. Network hiccups: keep trying.
                     if (e is ApiException) {
-                        _ui.update { it.copy(step = AuthStep.START, link = "", error = e.message) }
+                        repo.clearPending()
+                        _ui.update { it.copy(step = AuthStep.START, link = "", autoOpen = false, error = e.message) }
                         return@launch
                     }
                 }
@@ -67,12 +78,14 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancel() {
         pollJob?.cancel()
-        _ui.update { it.copy(step = AuthStep.START, link = "", error = null) }
+        repo.clearPending()
+        _ui.update { it.copy(step = AuthStep.START, link = "", autoOpen = false, error = null) }
     }
 
     fun logout() {
         pollJob?.cancel()
         repo.logout()
+        repo.clearPending()
         _ui.value = AuthUi(loggedIn = false)
     }
 }

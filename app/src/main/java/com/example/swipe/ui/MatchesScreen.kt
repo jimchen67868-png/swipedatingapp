@@ -8,9 +8,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.swipe.data.Message
+import com.example.swipe.data.MatchItem
 import com.example.swipe.data.Profile
 
 @Composable
@@ -35,9 +35,8 @@ fun Avatar(profile: Profile, size: Dp = 48.dp) {
 
 @Composable
 fun MatchesScreen(
-    matches: List<Profile>,
-    chats: Map<String, List<Message>>,
-    onOpen: (Profile) -> Unit,
+    matches: List<MatchItem>,
+    onOpen: (MatchItem) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -56,14 +55,14 @@ fun MatchesScreen(
             }
         } else {
             LazyColumn {
-                items(matches, key = { it.id }) { p ->
+                items(matches, key = { it.matchId }) { m ->
                     ListItem(
-                        modifier = Modifier.clickable { onOpen(p) },
+                        modifier = Modifier.clickable { onOpen(m) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        leadingContent = { Avatar(p) },
-                        headlineContent = { Text(p.name, fontWeight = FontWeight.SemiBold) },
+                        leadingContent = { Avatar(m.profile) },
+                        headlineContent = { Text(m.profile.name, fontWeight = FontWeight.SemiBold) },
                         supportingContent = {
-                            Text(chats[p.id]?.lastOrNull()?.text ?: "Say hello", maxLines = 1,
+                            Text(m.lastMessage ?: "Say hello", maxLines = 1,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                         }
                     )

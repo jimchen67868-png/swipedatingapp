@@ -16,12 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.swipe.data.MatchItem
 import com.example.swipe.data.Message
-import com.example.swipe.data.Profile
 
 @Composable
 fun ChatScreen(
-    match: Profile,
+    match: MatchItem,
     messages: List<Message>,
     onSend: (String) -> Unit,
     onBack: () -> Unit
@@ -35,16 +35,16 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize().background(Page).statusBarsPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-            Avatar(match, 36.dp)
+            Avatar(match.profile, 36.dp)
             Spacer(Modifier.width(12.dp))
-            Text(match.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(match.profile.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(messages) { m ->
+            items(messages, key = { it.id }) { m ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromMe) Arrangement.End else Arrangement.Start) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),

@@ -1,6 +1,6 @@
 {
   "name": "swipe-auth-backend",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" },
@@ -8,6 +8,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.0"
   }
 }

@@ -5,11 +5,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -22,10 +22,20 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val deck by vm.deck.collectAsStateWithLifecycle()
     val matches by vm.matches.collectAsStateWithLifecycle()
-    val chats by vm.chats.collectAsStateWithLifecycle()
+    val messages by vm.messages.collectAsStateWithLifecycle()
     val newMatch by vm.newMatch.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(error) {
+        error?.let {
+            snackbar.showSnackbar(it)
+            vm.clearError()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (route == "swipe" || route == "matches") {
                 NavigationBar {
@@ -48,14 +58,20 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
         NavHost(nav, startDestination = "swipe", modifier = Modifier.padding(pad)) {
             composable("swipe") { SwipeScreen(deck, vm::onSwiped) }
             composable("matches") {
-                MatchesScreen(matches, chats, onOpen = { nav.navigate("chat/${it.id}") }, onLogout = onLogout)
+                LaunchedEffect(Unit) { vm.refreshMatches() }
+                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout)
             }
             composable("chat/{id}") { entry ->
-                val id = entry.arguments?.getString("id").orEmpty()
-                matches.firstOrNull { it.id == id }?.let { match ->
+                val id = entry.arguments?.getString("id")?.toLongOrNull()
+                val match = matches.firstOrNull { it.matchId == id }
+                if (id != null && match != null) {
+                    DisposableEffect(id) {
+                        vm.startChat(id)
+                        onDispose { vm.stopChat() }
+                    }
                     ChatScreen(
                         match = match,
-                        messages = chats[id].orEmpty(),
+                        messages = messages,
                         onSend = { text -> vm.send(id, text) },
                         onBack = { nav.popBackStack() }
                     )
@@ -64,15 +80,15 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
         }
     }
 
-    newMatch?.let { match ->
+    newMatch?.let { m ->
         AlertDialog(
             onDismissRequest = vm::dismissMatch,
             title = { Text("It's a match") },
-            text = { Text("You and ${match.name} liked each other.") },
+            text = { Text("You and ${m.profile.name} liked each other.") },
             confirmButton = {
                 TextButton(onClick = {
                     vm.dismissMatch()
-                    nav.navigate("chat/${match.id}")
+                    nav.navigate("chat/${m.matchId}")
                 }) { Text("Send a message") }
             },
             dismissButton = { TextButton(onClick = vm::dismissMatch) { Text("Keep swiping") } }
@@ -80,7 +96,7 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
     }
 }
 
-private fun androidx.navigation.NavController.goTo(route: String) = navigate(route) {
+private fun NavController.goTo(route: String) = navigate(route) {
     popUpTo(graph.findStartDestination().id) { saveState = true }
     launchSingleTop = true
     restoreState = true

@@ -20,3 +20,9 @@ Notes
 - Run only ONE copy of the server per bot token.
 - Pending logins live in memory and are lost on restart (users just tap Continue again).
 - Keep BOT_TOKEN secret. If it leaks, revoke it with @BotFather (/revoke).
+
+## Database (Neon Postgres, free)
+1. neon.com > sign up > Create project > copy the connection string (starts with postgresql://).
+2. Set it as DATABASE_URL on your host. Tables are created automatically on startup.
+3. Tables: users, swipes, matches, messages. Phone numbers stay on the server and are never
+   sent to other users.

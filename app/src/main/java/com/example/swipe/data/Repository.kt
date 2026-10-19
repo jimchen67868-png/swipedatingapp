@@ -1,57 +1,52 @@
 package com.example.swipe.data
 
-import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlin.random.Random
+import org.json.JSONArray
+import org.json.JSONObject
 
-data class Profile(
-    val id: String,
-    val name: String,
-    val age: Int,
-    val distanceKm: Int,
-    val bio: String,
-    val photoUrl: String? = null,
-    val tint: Color = Color(0xFF5B6CFF)
-)
+private fun <T> JSONArray.mapObjects(f: (JSONObject) -> T): List<T> = List(length()) { f(getJSONObject(it)) }
 
-data class Message(val fromMe: Boolean, val text: String)
+private fun JSONObject.toMe() = MyProfile(getString("name"), getInt("age"), getString("city"))
+private fun JSONObject.toProfile() = Profile(getInt("id").toString(), getString("name"), getInt("age"), getString("city"))
 
-/**
- * In-memory data source so the app runs with no backend.
- * To go live, replace the bodies below with Firebase/REST calls and keep the same API.
- */
-class Repository {
-    private val _deck = MutableStateFlow(sampleProfiles)
-    val deck: StateFlow<List<Profile>> = _deck.asStateFlow()
+/** Talks to the backend. Every call returns a Result so the UI can show errors. */
+class Repository(private val api: Api) {
 
-    private val _matches = MutableStateFlow<List<Profile>>(emptyList())
-    val matches: StateFlow<List<Profile>> = _matches.asStateFlow()
+    /** null means the user has not created a profile yet. */
+    suspend fun me(): Result<MyProfile?> = api.get("/me").fold(
+        onSuccess = { Result.success(JSONObject(it).toMe()) },
+        onFailure = { e -> if ((e as? ApiException)?.status == 404) Result.success(null) else Result.failure(e) }
+    )
 
-    private val _chats = MutableStateFlow<Map<String, List<Message>>>(emptyMap())
-    val chats: StateFlow<Map<String, List<Message>>> = _chats.asStateFlow()
+    suspend fun saveMe(p: MyProfile): Result<MyProfile> =
+        api.put("/me", JSONObject().put("name", p.name).put("age", p.age).put("city", p.city))
+            .mapCatching { JSONObject(it).toMe() }
 
-    /** Records a swipe. Returns true if it created a match. */
-    fun swipe(profile: Profile, liked: Boolean): Boolean {
-        _deck.update { list -> list.filterNot { it.id == profile.id } }
-        // Mock: the other person likes you back 60% of the time.
-        val matched = liked && Random.nextFloat() < 0.6f
-        if (matched) _matches.update { it + profile }
-        return matched
-    }
+    suspend fun deck(): Result<List<Profile>> =
+        api.get("/deck").mapCatching { JSONArray(it).mapObjects { o -> o.toProfile() } }
 
-    fun send(matchId: String, message: Message) {
-        _chats.update { it + (matchId to (it[matchId].orEmpty() + message)) }
-    }
+    /** Returns the match id if this swipe created a match, otherwise null. */
+    suspend fun swipe(profileId: String, liked: Boolean): Result<Long?> =
+        api.post("/swipe", JSONObject().put("targetId", profileId.toInt()).put("liked", liked)).mapCatching {
+            val o = JSONObject(it)
+            if (o.optBoolean("matched")) o.getLong("matchId") else null
+        }
+
+    suspend fun matches(): Result<List<MatchItem>> =
+        api.get("/matches").mapCatching { text ->
+            JSONArray(text).mapObjects { o ->
+                MatchItem(
+                    matchId = o.getLong("match_id"),
+                    profile = o.toProfile(),
+                    lastMessage = if (o.isNull("last_message")) null else o.getString("last_message")
+                )
+            }
+        }
+
+    suspend fun messages(matchId: Long, after: Long): Result<List<Message>> =
+        api.get("/matches/$matchId/messages?after=$after").mapCatching { text ->
+            JSONArray(text).mapObjects { o -> Message(o.getLong("id"), o.getBoolean("mine"), o.getString("body")) }
+        }
+
+    suspend fun send(matchId: Long, text: String): Result<Unit> =
+        api.post("/matches/$matchId/messages", JSONObject().put("body", text)).map { }
 }
-
-val sampleProfiles = listOf(
-    Profile("1", "Mei", 26, 3, "Climbing gym regular. Looking for someone to try every dumpling place with.", tint = Color(0xFF5B6CFF)),
-    Profile("2", "Jun", 29, 7, "Photographer, weekend hiker, terrible at karaoke but never stops.", tint = Color(0xFFE5484D)),
-    Profile("3", "Lin", 24, 12, "Cat person. Will cook you dinner if you bring the wine.", tint = Color(0xFF1FB57A)),
-    Profile("4", "Kai", 31, 5, "Designer by day, vinyl collector by night.", tint = Color(0xFFB45CFF)),
-    Profile("5", "Yan", 27, 9, "Learning to surf. Badly. Send help and coffee.", tint = Color(0xFFEE8A2B)),
-    Profile("6", "Ray", 30, 2, "Night-market snob and amateur baker.", tint = Color(0xFF2B9AEE))
-)

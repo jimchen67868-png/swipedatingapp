@@ -12,16 +12,23 @@ import java.net.URL
 data class StartResult(val link: String, val secret: String)
 
 /** The server answered with an error (as opposed to a network problem). */
-class ApiException(message: String) : IOException(message)
+class ApiException(message: String, val status: Int = 0) : IOException(message)
 
 class AuthRepository(context: Context) {
     private val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
     val token: String? get() = prefs.getString("token", null)
+    val pendingSecret: String? get() = prefs.getString("pending_secret", null)
+    val pendingLink: String? get() = prefs.getString("pending_link", null)
+
+    fun clearPending() = prefs.edit().remove("pending_secret").remove("pending_link").apply()
 
     suspend fun start(): Result<StartResult> =
         post("/auth/start", JSONObject()).map {
-            StartResult(it.getString("link"), it.getString("secret"))
+            StartResult(it.getString("link"), it.getString("secret")).also { r ->
+                // Remember the login in progress, in case Android closes the app while the user is in Telegram.
+                prefs.edit().putString("pending_secret", r.secret).putString("pending_link", r.link).apply()
+            }
         }
 
     /** Returns true once login is complete, false while still waiting for Telegram. */
@@ -29,7 +36,7 @@ class AuthRepository(context: Context) {
         post("/auth/status", JSONObject().put("secret", secret)).mapCatching {
             val token = it.optString("token", "")
             if (token.isNotEmpty()) {
-                prefs.edit().putString("token", token).apply()
+                prefs.edit().putString("token", token).remove("pending_secret").remove("pending_link").apply()
                 true
             } else false
         }

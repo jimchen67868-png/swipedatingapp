@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
+import api from "./api.js";
+import { initDb } from "./db.js";
 
 const {
   BOT_TOKEN,     // from @BotFather
@@ -140,5 +142,7 @@ async function runBot() {
   }
 }
 
+app.use(api);
+await initDb();
 app.listen(PORT, () => console.log(`Auth backend listening on ${PORT}`));
 runBot();

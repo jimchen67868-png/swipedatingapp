@@ -23,7 +23,7 @@ fun LoginScreen(
     // Open Telegram once per login attempt (not again after a screen rotation).
     var openedLink by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(ui.link) {
-        if (ui.link.isNotEmpty() && ui.link != openedLink) {
+        if (ui.autoOpen && ui.link.isNotEmpty() && ui.link != openedLink) {
             openedLink = ui.link
             uriHandler.openUri(ui.link)
         }

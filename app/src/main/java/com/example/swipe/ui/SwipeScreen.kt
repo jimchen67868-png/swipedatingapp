@@ -138,9 +138,7 @@ private fun ProfileCard(
                 .padding(20.dp)
         ) {
             Text("${profile.name}, ${profile.age}", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("${profile.distanceKm} km away", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
-            Spacer(Modifier.height(8.dp))
-            Text(profile.bio, color = Color.White, fontSize = 16.sp, maxLines = 3)
+            Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
         }
         Stamp("LIKE", LikeGreen, likeAlpha, Modifier.align(Alignment.TopStart).padding(24.dp).rotate(-12f))
         Stamp("NOPE", NopeRed, nopeAlpha, Modifier.align(Alignment.TopEnd).padding(24.dp).rotate(12f))
