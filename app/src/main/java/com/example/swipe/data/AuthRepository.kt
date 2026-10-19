@@ -9,21 +9,29 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-data class StartResult(val ref: String, val link: String)
+data class StartResult(val link: String, val secret: String)
+
+/** The server answered with an error (as opposed to a network problem). */
+class ApiException(message: String) : IOException(message)
 
 class AuthRepository(context: Context) {
     private val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
     val token: String? get() = prefs.getString("token", null)
 
-    suspend fun start(phone: String): Result<StartResult> =
-        post("/auth/start", JSONObject().put("phone", phone)).map {
-            StartResult(it.getString("ref"), it.getString("link"))
+    suspend fun start(): Result<StartResult> =
+        post("/auth/start", JSONObject()).map {
+            StartResult(it.getString("link"), it.getString("secret"))
         }
 
-    suspend fun verify(ref: String, code: String): Result<Unit> =
-        post("/auth/verify", JSONObject().put("ref", ref).put("code", code)).mapCatching {
-            prefs.edit().putString("token", it.getString("token")).apply()
+    /** Returns true once login is complete, false while still waiting for Telegram. */
+    suspend fun checkStatus(secret: String): Result<Boolean> =
+        post("/auth/status", JSONObject().put("secret", secret)).mapCatching {
+            val token = it.optString("token", "")
+            if (token.isNotEmpty()) {
+                prefs.edit().putString("token", token).apply()
+                true
+            } else false
         }
 
     fun logout() = prefs.edit().remove("token").apply()
@@ -42,7 +50,7 @@ class AuthRepository(context: Context) {
                 val stream = if (status in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
                 val json = JSONObject(text.ifBlank { "{}" })
-                if (status !in 200..299) throw IOException(json.optString("error", "Request failed ($status)"))
+                if (status !in 200..299) throw ApiException(json.optString("error", "Request failed ($status)"))
                 json
             }
         }

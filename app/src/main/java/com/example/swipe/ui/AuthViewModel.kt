@@ -3,20 +3,22 @@ package com.example.swipe.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.swipe.data.ApiException
 import com.example.swipe.data.AuthRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-enum class AuthStep { PHONE, CODE }
+enum class AuthStep { START, WAITING }
 
 data class AuthUi(
     val loggedIn: Boolean,
-    val step: AuthStep = AuthStep.PHONE,
-    val phone: String = "",
-    val ref: String = "",
+    val step: AuthStep = AuthStep.START,
     val link: String = "",
     val loading: Boolean = false,
     val error: String? = null
@@ -26,37 +28,50 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AuthRepository(app)
     private val _ui = MutableStateFlow(AuthUi(loggedIn = repo.token != null))
     val ui: StateFlow<AuthUi> = _ui.asStateFlow()
+    private var pollJob: Job? = null
 
-    fun sendCode(raw: String) {
-        val phone = raw.filter { it.isDigit() || it == '+' }
-        if (!Regex("^\\+[1-9]\\d{7,14}$").matches(phone)) {
-            _ui.update { it.copy(error = "Enter your number with country code, like +8613800138000") }
-            return
-        }
+    fun start() {
         _ui.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
-            repo.start(phone)
+            repo.start()
                 .onSuccess { r ->
-                    _ui.update { s ->
-                        s.copy(step = AuthStep.CODE, phone = phone, ref = r.ref, link = r.link, loading = false)
+                    _ui.update { s -> s.copy(step = AuthStep.WAITING, link = r.link, loading = false) }
+                    poll(r.secret)
+                }
+                .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message ?: "Network error") } }
+        }
+    }
+
+    private fun poll(secret: String) {
+        pollJob?.cancel()
+        pollJob = viewModelScope.launch {
+            while (isActive) {
+                delay(2000)
+                val result = repo.checkStatus(secret)
+                result.onSuccess { done ->
+                    if (done) {
+                        _ui.update { it.copy(loggedIn = true) }
+                        return@launch
                     }
                 }
-                .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
+                result.onFailure { e ->
+                    // Server said no (expired etc.): stop. Network hiccups: keep trying.
+                    if (e is ApiException) {
+                        _ui.update { it.copy(step = AuthStep.START, link = "", error = e.message) }
+                        return@launch
+                    }
+                }
+            }
         }
     }
 
-    fun verify(code: String) {
-        _ui.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            repo.verify(_ui.value.ref, code)
-                .onSuccess { _ui.update { it.copy(loggedIn = true, loading = false) } }
-                .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
-        }
+    fun cancel() {
+        pollJob?.cancel()
+        _ui.update { it.copy(step = AuthStep.START, link = "", error = null) }
     }
-
-    fun changeNumber() = _ui.update { it.copy(step = AuthStep.PHONE, error = null) }
 
     fun logout() {
+        pollJob?.cancel()
         repo.logout()
         _ui.value = AuthUi(loggedIn = false)
     }

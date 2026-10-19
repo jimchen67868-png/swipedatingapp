@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
                 if (ui.loggedIn) {
                     AppNav(onLogout = auth::logout)
                 } else {
-                    LoginScreen(ui, onSend = auth::sendCode, onVerify = auth::verify, onChangeNumber = auth::changeNumber)
+                    LoginScreen(ui, onStart = auth::start, onCancel = auth::cancel)
                 }
             }
         }
