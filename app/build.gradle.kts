@@ -15,7 +15,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         // Set this to your deployed auth backend (HTTPS, no trailing slash).
-        buildConfigField("String", "API_BASE_URL", "\"https://YOUR-BACKEND-URL\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://swipedatingapp.onrender.com\"")
     }
     buildFeatures {
         compose = true

@@ -41,8 +41,8 @@ class AuthRepository(context: Context) {
             runCatching {
                 val conn = URL(BuildConfig.API_BASE_URL + path).openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 10_000
+                conn.connectTimeout = 60_000
+                conn.readTimeout = 60_000
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
