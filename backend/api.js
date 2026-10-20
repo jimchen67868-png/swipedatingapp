@@ -1,5 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { pool } from "./db.js";
 
 const api = express.Router();
@@ -36,7 +37,7 @@ async function isMember(matchId, userId) {
 // ----- my profile -----
 api.get("/me", auth, wrap(async (req, res) => {
   const { rows } = await pool.query(
-    `select id, name, age, city, gender, looking_for as "lookingFor" from users
+    `select id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified from users
      where phone = $1 and gender is not null and looking_for in ('men', 'women')`,
     [req.phone]
   );
@@ -61,7 +62,7 @@ api.put("/me", auth, wrap(async (req, res) => {
     `insert into users (phone, name, age, city, gender, looking_for) values ($1, $2, $3, $4, $5, $6)
      on conflict (phone) do update set name = excluded.name, age = excluded.age, city = excluded.city,
        gender = excluded.gender, looking_for = excluded.looking_for
-     returning id, name, age, city, gender, looking_for as "lookingFor"`,
+     returning id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified`,
     [req.phone, name, age, city, gender, lookingFor]
   );
   res.json(rows[0]);
@@ -74,8 +75,44 @@ api.post("/me/photo", auth, needUser,
   wrap(async (req, res) => {
     const b = req.body;
     if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return bad(res, "Please send a JPEG photo.");
-    await pool.query("update users set photo = $1, photo_v = photo_v + 1 where id = $2", [b, req.userId]);
+    await pool.query("update users set photo = $1, photo_v = photo_v + 1, verified_at = null where id = $2", [b, req.userId]);
     res.json({ ok: true });
+  }));
+
+// ----- face verification -----
+// The selfie is compared with the profile photo and is never stored.
+const verifyLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, limit: 6,
+  keyGenerator: (req) => String(req.userId),
+  message: { error: "Too many tries. Please try again in an hour." }
+});
+
+api.post("/me/verify", auth, needUser, verifyLimit,
+  express.raw({ type: "image/jpeg", limit: "800kb" }),
+  wrap(async (req, res) => {
+    const selfie = req.body;
+    if (!Buffer.isBuffer(selfie) || selfie.length < 4 || selfie[0] !== 0xff || selfie[1] !== 0xd8) return bad(res, "Please send a JPEG selfie.");
+    const { rows } = await pool.query("select photo from users where id = $1", [req.userId]);
+    if (!rows[0]?.photo) return bad(res, "Add a profile photo first, then verify.");
+    let r;
+    try {
+      const { compareFaces } = await import("./face.js");
+      r = await compareFaces(selfie, rows[0].photo);
+    } catch (e) {
+      console.error("face check unavailable:", e);
+      return bad(res, "Verification is not available right now. Try again later.", 503);
+    }
+    if (!r.ok) {
+      const msg = {
+        no_face_selfie: "We couldn't see your face. Use good light and look at the camera.",
+        many_faces: "Only you should be in the selfie.",
+        no_face_photo: "We couldn't find a face in your profile photo. Choose a clearer photo."
+      }[r.reason];
+      return bad(res, msg, 422);
+    }
+    if (!r.match) return bad(res, "Your selfie doesn't match your profile photo.", 422);
+    await pool.query("update users set verified_at = now() where id = $1", [req.userId]);
+    res.json({ verified: true });
   }));
 
 api.get("/photo/:id", wrap(async (req, res) => {
@@ -92,7 +129,8 @@ api.get("/photo/:id", wrap(async (req, res) => {
 api.get("/deck", auth, needUser, wrap(async (req, res) => {
   // Both sides must fit: I want their gender, and they want mine.
   const { rows } = await pool.query(
-    `select u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v
+    `select u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v,
+            (u.verified_at is not null) as verified
      from users u join users me on me.id = $1
      where u.id <> me.id and u.gender is not null and u.looking_for in ('men', 'women')
        and u.gender = case me.looking_for when 'men' then 'man' else 'woman' end
@@ -142,6 +180,7 @@ api.post("/swipe", auth, needUser, wrap(async (req, res) => {
 api.get("/matches", auth, needUser, wrap(async (req, res) => {
   const { rows } = await pool.query(
     `select m.id as match_id, u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v,
+            (u.verified_at is not null) as verified,
             (select body from messages where match_id = m.id order by id desc limit 1) as last_message
      from matches m join users u on u.id = case when m.a = $1 then m.b else m.a end
      where m.a = $1 or m.b = $1

@@ -7,7 +7,8 @@ data class MyProfile(
     val age: Int,
     val city: String,
     val gender: String,       // man | woman
-    val lookingFor: String    // men | women
+    val lookingFor: String,   // men | women
+    val verified: Boolean = false
 )
 
 private val palette = listOf(
@@ -20,7 +21,8 @@ data class Profile(
     val name: String,
     val age: Int,
     val city: String,
-    val photoUrl: String? = null
+    val photoUrl: String? = null,
+    val verified: Boolean = false
 ) {
     val tint: Color get() = palette[id.hashCode().mod(palette.size)]
 }

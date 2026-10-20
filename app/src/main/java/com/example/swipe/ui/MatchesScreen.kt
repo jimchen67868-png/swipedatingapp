@@ -6,6 +6,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -46,11 +57,20 @@ fun Avatar(profile: Profile, size: Dp = 48.dp) {
 }
 
 @Composable
+fun VerifiedBadge(modifier: Modifier = Modifier) {
+    Box(modifier.size(18.dp).clip(CircleShape).background(Color(0xFF2B9AEE)), contentAlignment = Alignment.Center) {
+        Icon(Icons.Filled.Check, "Verified", tint = Color.White, modifier = Modifier.size(12.dp))
+    }
+}
+
+@Composable
 fun MatchesScreen(
     matches: List<MatchItem>,
     onOpen: (MatchItem) -> Unit,
     onLogout: () -> Unit,
     onPhoto: (ByteArray) -> Unit,
+    verified: Boolean,
+    onVerify: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -65,9 +85,17 @@ fun MatchesScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Matches", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Row {
-                TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("My photo") }
-                TextButton(onClick = onLogout) { Text("Log out") }
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Menu, "Menu") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("My photo") }, onClick = {
+                        menu = false
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    })
+                    DropdownMenuItem(text = { Text(if (verified) "Verified \u2713" else "Get verified") }, onClick = { menu = false; onVerify() })
+                    DropdownMenuItem(text = { Text("Log out") }, onClick = { menu = false; onLogout() })
+                }
             }
         }
         if (matches.isEmpty()) {
@@ -81,7 +109,15 @@ fun MatchesScreen(
                         modifier = Modifier.clickable { onOpen(m) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         leadingContent = { Avatar(m.profile) },
-                        headlineContent = { Text(m.profile.name, fontWeight = FontWeight.SemiBold) },
+                        headlineContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(m.profile.name, fontWeight = FontWeight.SemiBold)
+                                if (m.profile.verified) {
+                                    Spacer(Modifier.width(6.dp))
+                                    VerifiedBadge()
+                                }
+                            }
+                        },
                         supportingContent = {
                             Text(m.lastMessage ?: "Say hello", maxLines = 1,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))

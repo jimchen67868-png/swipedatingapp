@@ -37,12 +37,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val newMatch: StateFlow<MatchItem?> = _newMatch.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+    private val _verified = MutableStateFlow<Boolean?>(null)
+    val verified: StateFlow<Boolean?> = _verified.asStateFlow()
+    private val _verifying = MutableStateFlow(false)
+    val verifying: StateFlow<Boolean> = _verifying.asStateFlow()
     private val _expired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _expired.asStateFlow()
 
     private fun fail(e: Throwable, quiet: Boolean = false) {
         if ((e as? ApiException)?.status == 401) _expired.value = true
         else if (!quiet) _error.value = e.message ?: "Network error"
+    }
+
+    /** Sets the starting value once; later calls (for example after rotating the screen) are ignored. */
+    fun initVerified(v: Boolean) { if (_verified.value == null) _verified.value = v }
+
+    fun verify(selfie: ByteArray) {
+        if (_verifying.value) return
+        _verifying.value = true
+        viewModelScope.launch {
+            repo.verify(selfie)
+                .onSuccess { _verified.value = true; _error.value = "You're verified" }
+                .onFailure { fail(it) }
+            _verifying.value = false
+        }
     }
 
     fun clearError() { _error.value = null }
@@ -91,7 +109,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun uploadPhoto(jpeg: ByteArray) {
         viewModelScope.launch {
             repo.uploadPhoto(jpeg)
-                .onSuccess { _error.value = "Photo updated" }
+                .onSuccess {
+                    val was = _verified.value == true
+                    _verified.value = false
+                    _error.value = if (was) "Photo updated. Verify again to keep your badge." else "Photo updated"
+                }
                 .onFailure { fail(it) }
         }
     }
@@ -143,5 +165,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _newMatch.value = null
         _error.value = null
         _expired.value = false
+        _verified.value = null
+        _verifying.value = false
     }
 }

@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
                     when (val s = profile) {
                         ProfileState.Loading -> LoadingScreen()
                         ProfileState.Missing -> ProfileSetupScreen(onSave = profileVm::save, saving = saving, serverError = saveError)
-                        is ProfileState.Ready -> AppNav(onLogout = logout)
+                        is ProfileState.Ready -> AppNav(onLogout = logout, initialVerified = s.me.verified)
                         is ProfileState.Failed -> ErrorScreen(s.message, onRetry = profileVm::load, onLogout = logout)
                     }
                 }

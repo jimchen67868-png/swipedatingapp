@@ -142,7 +142,13 @@ private fun ProfileCard(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
                 .padding(20.dp)
         ) {
-            Text("${profile.name}, ${profile.age}", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${profile.name}, ${profile.age}", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                if (profile.verified) {
+                    Spacer(Modifier.width(8.dp))
+                    VerifiedBadge()
+                }
+            }
             Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
         }
         Stamp("LIKE", LikeGreen, likeAlpha, Modifier.align(Alignment.TopStart).padding(24.dp).rotate(-12f))

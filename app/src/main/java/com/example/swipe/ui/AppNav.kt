@@ -17,7 +17,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
+fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, vm: AppViewModel = viewModel()) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val deck by vm.deck.collectAsStateWithLifecycle()
@@ -25,7 +25,11 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
     val messages by vm.messages.collectAsStateWithLifecycle()
     val newMatch by vm.newMatch.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    val verified by vm.verified.collectAsStateWithLifecycle()
+    val verifying by vm.verifying.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(initialVerified) { vm.initVerified(initialVerified) }
 
     LaunchedEffect(error) {
         error?.let {
@@ -59,7 +63,11 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
             composable("swipe") { SwipeScreen(deck, vm::onSwiped) }
             composable("matches") {
                 LaunchedEffect(Unit) { vm.refreshMatches() }
-                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout, onPhoto = vm::uploadPhoto)
+                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout, onPhoto = vm::uploadPhoto,
+                    verified = verified == true, onVerify = { nav.navigate("verify") })
+            }
+            composable("verify") {
+                VerifyScreen(verified = verified == true, working = verifying, onSubmit = vm::verify, onBack = { nav.popBackStack() })
             }
             composable("chat/{id}") { entry ->
                 val id = entry.arguments?.getString("id")?.toLongOrNull()
