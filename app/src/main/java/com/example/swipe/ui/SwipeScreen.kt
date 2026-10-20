@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.swipe.data.Profile
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -120,9 +122,6 @@ private fun ProfileCard(
             .clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(profile.tint, profile.tint.copy(alpha = 0.55f))))
     ) {
-        // To show real photos, add Coil and use:
-        // AsyncImage(model = profile.photoUrl, contentDescription = profile.name,
-        //            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Text(
             profile.name.first().toString(),
             color = Color.White.copy(alpha = 0.25f),
@@ -130,6 +129,12 @@ private fun ProfileCard(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.Center)
         )
+        if (profile.photoUrl != null) {
+            AsyncImage(
+                model = profile.photoUrl, contentDescription = profile.name,
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+            )
+        }
         Column(
             Modifier
                 .align(Alignment.BottomStart)

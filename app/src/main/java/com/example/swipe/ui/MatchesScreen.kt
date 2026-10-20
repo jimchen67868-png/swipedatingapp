@@ -20,6 +20,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import coil.compose.AsyncImage
+import com.example.swipe.data.readJpeg
+import kotlinx.coroutines.launch
 import com.example.swipe.data.MatchItem
 import com.example.swipe.data.Profile
 
@@ -30,6 +39,9 @@ fun Avatar(profile: Profile, size: Dp = 48.dp) {
         contentAlignment = Alignment.Center
     ) {
         Text(profile.name.first().toString(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp)
+        if (profile.photoUrl != null) {
+            AsyncImage(model = profile.photoUrl, contentDescription = profile.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -38,8 +50,14 @@ fun MatchesScreen(
     matches: List<MatchItem>,
     onOpen: (MatchItem) -> Unit,
     onLogout: () -> Unit,
+    onPhoto: (ByteArray) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch { readJpeg(context, uri)?.let(onPhoto) }
+    }
     Column(modifier.fillMaxSize().background(Page)) {
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
@@ -47,7 +65,10 @@ fun MatchesScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Matches", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            TextButton(onClick = onLogout) { Text("Log out") }
+            Row {
+                TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("My photo") }
+                TextButton(onClick = onLogout) { Text("Log out") }
+            }
         }
         if (matches.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

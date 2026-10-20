@@ -1,5 +1,18 @@
 package com.example.swipe.ui
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import com.example.swipe.data.readJpeg
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,13 +34,20 @@ private val genderOptions = listOf("man" to "Man", "woman" to "Woman")
 private val lookingOptions = listOf("men" to "Men", "women" to "Women")
 
 @Composable
-fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, serverError: String? = null) {
+fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean = false, serverError: String? = null) {
     var name by rememberSaveable { mutableStateOf("") }
     var age by rememberSaveable { mutableStateOf("") }
     var city by rememberSaveable { mutableStateOf("") }
     var gender by rememberSaveable { mutableStateOf("") }
     var lookingFor by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var photo by remember { mutableStateOf<ByteArray?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch { photo = readJpeg(context, uri) }
+    }
+    val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
 
     fun submit() {
         val n = name.trim()
@@ -43,7 +63,7 @@ fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, ser
             lookingFor.isEmpty() -> "Please choose who you want to meet."
             else -> null
         }
-        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor))
+        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor), photo)
     }
 
     Column(
@@ -59,7 +79,16 @@ fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, ser
         Text("Tell us about you", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text("This is what other people will see on your card.", color = Ink.copy(alpha = 0.6f))
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
+        Box(
+            Modifier.size(120.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(Ink.copy(alpha = 0.08f))
+                .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            contentAlignment = Alignment.Center
+        ) {
+            if (preview != null) Image(preview, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else Text("Add photo", color = Ink.copy(alpha = 0.6f))
+        }
+        Spacer(Modifier.height(20.dp))
 
         OutlinedTextField(
             value = name,

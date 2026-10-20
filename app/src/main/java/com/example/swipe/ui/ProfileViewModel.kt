@@ -38,12 +38,15 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun save(p: MyProfile) {
+    fun save(p: MyProfile, photo: ByteArray?) {
         _saving.value = true
         _saveError.value = null
         viewModelScope.launch {
             repo.saveMe(p)
-                .onSuccess { _state.value = ProfileState.Ready(it) }
+                .onSuccess {
+                    if (photo != null) repo.uploadPhoto(photo)
+                    _state.value = ProfileState.Ready(it)
+                }
                 .onFailure { e -> _saveError.value = e.message ?: "Network error" }
             _saving.value = false
         }

@@ -59,7 +59,7 @@ fun AppNav(onLogout: () -> Unit, vm: AppViewModel = viewModel()) {
             composable("swipe") { SwipeScreen(deck, vm::onSwiped) }
             composable("matches") {
                 LaunchedEffect(Unit) { vm.refreshMatches() }
-                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout)
+                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout, onPhoto = vm::uploadPhoto)
             }
             composable("chat/{id}") { entry ->
                 val id = entry.arguments?.getString("id")?.toLongOrNull()

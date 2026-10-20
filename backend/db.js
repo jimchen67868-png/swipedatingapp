@@ -39,6 +39,8 @@ create table if not exists messages (
 create index if not exists messages_match_idx on messages (match_id, id);
 
 alter table users add column if not exists gender text check (gender in ('man', 'woman', 'other'));
+alter table users add column if not exists photo bytea;
+alter table users add column if not exists photo_v int not null default 0;
 alter table users add column if not exists looking_for text check (looking_for in ('men', 'women'));
 `;
 

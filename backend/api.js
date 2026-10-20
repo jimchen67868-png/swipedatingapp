@@ -67,11 +67,32 @@ api.put("/me", auth, wrap(async (req, res) => {
   res.json(rows[0]);
 }));
 
+// ----- photos -----
+// The app sends one small JPEG (about 100 KB). It is stored in the database.
+api.post("/me/photo", auth, needUser,
+  express.raw({ type: "image/jpeg", limit: "600kb" }),
+  wrap(async (req, res) => {
+    const b = req.body;
+    if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return bad(res, "Please send a JPEG photo.");
+    await pool.query("update users set photo = $1, photo_v = photo_v + 1 where id = $2", [b, req.userId]);
+    res.json({ ok: true });
+  }));
+
+api.get("/photo/:id", wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.sendStatus(404);
+  const { rows } = await pool.query("select photo from users where id = $1", [id]);
+  if (!rows[0]?.photo) return res.sendStatus(404);
+  res.set("Content-Type", "image/jpeg");
+  res.set("Cache-Control", "public, max-age=604800");
+  res.send(rows[0].photo);
+}));
+
 // ----- discover -----
 api.get("/deck", auth, needUser, wrap(async (req, res) => {
   // Both sides must fit: I want their gender, and they want mine.
   const { rows } = await pool.query(
-    `select u.id, u.name, u.age, u.city
+    `select u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v
      from users u join users me on me.id = $1
      where u.id <> me.id and u.gender is not null and u.looking_for in ('men', 'women')
        and u.gender = case me.looking_for when 'men' then 'man' else 'woman' end
@@ -120,7 +141,7 @@ api.post("/swipe", auth, needUser, wrap(async (req, res) => {
 // ----- matches and chat -----
 api.get("/matches", auth, needUser, wrap(async (req, res) => {
   const { rows } = await pool.query(
-    `select m.id as match_id, u.id, u.name, u.age, u.city,
+    `select m.id as match_id, u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v,
             (select body from messages where match_id = m.id order by id desc limit 1) as last_message
      from matches m join users u on u.id = case when m.a = $1 then m.b else m.a end
      where m.a = $1 or m.b = $1
@@ -150,6 +171,7 @@ api.post("/matches/:id/messages", auth, needUser, wrap(async (req, res) => {
 }));
 
 api.use((err, _req, res, _next) => {
+  if (err.type === "entity.too.large") return bad(res, "Photo is too large.", 413);
   console.error(err);
   bad(res, "Server error. Please try again.", 500);
 });

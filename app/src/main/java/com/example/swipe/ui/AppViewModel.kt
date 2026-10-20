@@ -88,6 +88,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun uploadPhoto(jpeg: ByteArray) {
+        viewModelScope.launch {
+            repo.uploadPhoto(jpeg)
+                .onSuccess { _error.value = "Photo updated" }
+                .onFailure { fail(it) }
+        }
+    }
+
     // ----- chat -----
     fun startChat(matchId: Long) {
         chatJob?.cancel()

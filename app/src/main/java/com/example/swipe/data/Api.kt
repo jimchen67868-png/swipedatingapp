@@ -12,11 +12,12 @@ import java.net.URL
 class Api(context: Context) {
     private val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
 
-    suspend fun get(path: String) = call("GET", path, null)
-    suspend fun put(path: String, body: JSONObject) = call("PUT", path, body)
-    suspend fun post(path: String, body: JSONObject) = call("POST", path, body)
+    suspend fun get(path: String) = call("GET", path, null, null)
+    suspend fun put(path: String, body: JSONObject) = call("PUT", path, body.toString().toByteArray(), "application/json")
+    suspend fun post(path: String, body: JSONObject) = call("POST", path, body.toString().toByteArray(), "application/json")
+    suspend fun postBytes(path: String, bytes: ByteArray, type: String) = call("POST", path, bytes, type)
 
-    private suspend fun call(method: String, path: String, body: JSONObject?): Result<String> =
+    private suspend fun call(method: String, path: String, body: ByteArray?, type: String?): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val conn = URL(BuildConfig.API_BASE_URL + path).openConnection() as HttpURLConnection
@@ -26,8 +27,8 @@ class Api(context: Context) {
                 prefs.getString("token", null)?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
                 if (body != null) {
                     conn.doOutput = true
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                    conn.setRequestProperty("Content-Type", type ?: "application/json")
+                    conn.outputStream.use { it.write(body) }
                 }
                 val status = conn.responseCode
                 val stream = if (status in 200..299) conn.inputStream else conn.errorStream
