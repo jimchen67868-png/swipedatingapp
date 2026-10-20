@@ -43,10 +43,25 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
         _saveError.value = null
         viewModelScope.launch {
             repo.saveMe(p)
-                .onSuccess {
-                    if (photo != null) repo.uploadPhoto(photo)
-                    _state.value = ProfileState.Ready(it)
+                .onSuccess { me ->
+                    // The profile is saved. If the photo is refused, the app asks for another one.
+                    val upload = if (photo != null) repo.uploadPhoto(photo) else Result.failure(Exception("Please add a photo of you."))
+                    upload.onFailure { e -> _saveError.value = e.message ?: "Network error" }
+                    _state.value = ProfileState.Ready(me.copy(hasPhoto = upload.isSuccess))
                 }
+                .onFailure { e -> _saveError.value = e.message ?: "Network error" }
+            _saving.value = false
+        }
+    }
+
+    /** Used when the profile exists but the main photo is missing or was refused. */
+    fun uploadPhoto(jpeg: ByteArray) {
+        val ready = _state.value as? ProfileState.Ready ?: return
+        _saving.value = true
+        _saveError.value = null
+        viewModelScope.launch {
+            repo.uploadPhoto(jpeg)
+                .onSuccess { _state.value = ProfileState.Ready(ready.me.copy(hasPhoto = true)) }
                 .onFailure { e -> _saveError.value = e.message ?: "Network error" }
             _saving.value = false
         }

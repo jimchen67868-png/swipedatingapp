@@ -8,7 +8,9 @@ data class MyProfile(
     val city: String,
     val gender: String,       // man | woman
     val lookingFor: String,   // men | women
-    val verified: Boolean = false
+    val verified: Boolean = false,
+    val idVerified: Boolean = false,
+    val hasPhoto: Boolean = false
 )
 
 private val palette = listOf(
@@ -22,10 +24,16 @@ data class Profile(
     val age: Int,
     val city: String,
     val photoUrl: String? = null,
-    val verified: Boolean = false
+    val verified: Boolean = false,
+    val extraPhotos: List<String> = emptyList()
 ) {
+    /** Main photo first, then the extra photos. */
+    val photos: List<String> get() = listOfNotNull(photoUrl) + extraPhotos
     val tint: Color get() = palette[id.hashCode().mod(palette.size)]
 }
+
+data class PhotoSlot(val id: Int, val url: String)
+data class MyPhotos(val main: String?, val extras: List<PhotoSlot>)
 
 data class MatchItem(val matchId: Long, val profile: Profile, val lastMessage: String?)
 

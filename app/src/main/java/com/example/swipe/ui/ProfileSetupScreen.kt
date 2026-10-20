@@ -61,6 +61,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
             c.isEmpty() -> "Please enter your city."
             gender.isEmpty() -> "Please choose your gender."
             lookingFor.isEmpty() -> "Please choose who you want to meet."
+            photo == null -> "Please add a main photo. Only you, with your face clearly visible."
             else -> null
         }
         if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor), photo)
@@ -86,7 +87,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
             contentAlignment = Alignment.Center
         ) {
             if (preview != null) Image(preview, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            else Text("Add photo", color = Ink.copy(alpha = 0.6f))
+            else Text("Add photo\n(required)", color = Ink.copy(alpha = 0.6f))
         }
         Spacer(Modifier.height(20.dp))
 

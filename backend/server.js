@@ -38,7 +38,9 @@ setInterval(() => {
 // ---------- HTTP API ----------
 const app = express();
 app.set("trust proxy", 1);
-app.use(express.json());
+// The ID check route sends two photos, so it parses its own larger JSON body (after login is checked).
+const json = express.json();
+app.use((req, res, next) => (req.path === "/me/verify-id" ? next() : json(req, res, next)));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

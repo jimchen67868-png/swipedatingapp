@@ -68,16 +68,13 @@ fun MatchesScreen(
     matches: List<MatchItem>,
     onOpen: (MatchItem) -> Unit,
     onLogout: () -> Unit,
-    onPhoto: (ByteArray) -> Unit,
+    onPhotos: () -> Unit,
     verified: Boolean,
+    idVerified: Boolean,
     onVerify: () -> Unit,
+    onDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { readJpeg(context, uri)?.let(onPhoto) }
-    }
     Column(modifier.fillMaxSize().background(Page)) {
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
@@ -89,12 +86,10 @@ fun MatchesScreen(
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Menu, "Menu") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("My photo") }, onClick = {
-                        menu = false
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    })
-                    DropdownMenuItem(text = { Text(if (verified) "Verified \u2713" else "Get verified") }, onClick = { menu = false; onVerify() })
+                    DropdownMenuItem(text = { Text("My photos") }, onClick = { menu = false; onPhotos() })
+                    DropdownMenuItem(text = { Text(if (idVerified) "ID verified \u2713" else if (verified) "Verified \u2713" else "Get verified") }, onClick = { menu = false; onVerify() })
                     DropdownMenuItem(text = { Text("Log out") }, onClick = { menu = false; onLogout() })
+                    DropdownMenuItem(text = { Text("Delete account") }, onClick = { menu = false; onDeleteAccount() })
                 }
             }
         }

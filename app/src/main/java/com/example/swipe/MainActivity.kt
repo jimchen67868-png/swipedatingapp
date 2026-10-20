@@ -12,6 +12,7 @@ import com.example.swipe.ui.AppTheme
 import com.example.swipe.ui.AppViewModel
 import com.example.swipe.ui.AuthViewModel
 import com.example.swipe.ui.ErrorScreen
+import com.example.swipe.ui.AddPhotoScreen
 import com.example.swipe.ui.LoadingScreen
 import com.example.swipe.ui.LoginScreen
 import com.example.swipe.ui.ProfileSetupScreen
@@ -48,7 +49,9 @@ class MainActivity : ComponentActivity() {
                     when (val s = profile) {
                         ProfileState.Loading -> LoadingScreen()
                         ProfileState.Missing -> ProfileSetupScreen(onSave = profileVm::save, saving = saving, serverError = saveError)
-                        is ProfileState.Ready -> AppNav(onLogout = logout, initialVerified = s.me.verified)
+                        is ProfileState.Ready ->
+                            if (s.me.hasPhoto) AppNav(onLogout = logout, initialVerified = s.me.verified, initialIdVerified = s.me.idVerified)
+                            else AddPhotoScreen(onPhoto = profileVm::uploadPhoto, saving = saving, serverError = saveError, onLogout = logout)
                         is ProfileState.Failed -> ErrorScreen(s.message, onRetry = profileVm::load, onLogout = logout)
                     }
                 }

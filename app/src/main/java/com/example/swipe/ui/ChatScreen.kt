@@ -24,7 +24,8 @@ fun ChatScreen(
     match: MatchItem,
     messages: List<Message>,
     onSend: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onReport: () -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -38,6 +39,8 @@ fun ChatScreen(
             Avatar(match.profile, 36.dp)
             Spacer(Modifier.width(12.dp))
             Text(match.profile.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onReport) { Text("Report") }
         }
         LazyColumn(
             state = listState,

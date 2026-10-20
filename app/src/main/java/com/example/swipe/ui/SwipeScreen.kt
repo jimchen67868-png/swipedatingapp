@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.swipe.data.Profile
@@ -40,6 +42,7 @@ import kotlin.math.roundToInt
 fun SwipeScreen(
     deck: List<Profile>,
     onSwiped: (Profile, Boolean) -> Unit,
+    onReport: (Profile) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -97,6 +100,12 @@ fun SwipeScreen(
                             )
                         }
                 )
+                Text(
+                    "Report", color = Color.White, fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 26.dp, end = 12.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { onReport(top) }.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
             }
         }
 
@@ -129,11 +138,37 @@ private fun ProfileCard(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.Center)
         )
-        if (profile.photoUrl != null) {
+        val photos = profile.photos
+        var shown by remember(profile.id) { mutableIntStateOf(0) }
+        if (photos.isNotEmpty()) {
             AsyncImage(
-                model = profile.photoUrl, contentDescription = profile.name,
+                model = photos[shown.coerceIn(0, photos.lastIndex)], contentDescription = profile.name,
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
             )
+            if (photos.size > 1) {
+                // Tap the left or right half of the card to see the previous or next photo.
+                Row(Modifier.fillMaxSize()) {
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (shown > 0) shown-- }
+                    )
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (shown < photos.lastIndex) shown++ }
+                    )
+                }
+                Row(
+                    Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    photos.indices.forEach { i ->
+                        Box(
+                            Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = if (i == shown) 0.95f else 0.35f))
+                        )
+                    }
+                }
+            }
         }
         Column(
             Modifier

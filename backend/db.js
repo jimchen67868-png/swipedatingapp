@@ -37,9 +37,35 @@ create table if not exists messages (
   created_at timestamptz not null default now()
 );
 create index if not exists messages_match_idx on messages (match_id, id);
+create table if not exists photos (
+  id serial primary key,
+  user_id int not null references users(id) on delete cascade,
+  data bytea not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists photos_user_idx on photos (user_id);
+create table if not exists blocks (
+  blocker int not null references users(id) on delete cascade,
+  blocked int not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker, blocked)
+);
+create table if not exists reports (
+  id serial primary key,
+  reporter int not null references users(id) on delete cascade,
+  reported int not null references users(id) on delete cascade,
+  reason text not null,
+  handled boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists reports_open_idx on reports (handled, id);
+-- When a banned person deletes their account we keep only a one-way hash of the phone number, so they can't simply return.
+create table if not exists banned_phones (hash text primary key);
 
 alter table users add column if not exists gender text check (gender in ('man', 'woman', 'other'));
+alter table users add column if not exists banned boolean not null default false;
 alter table users add column if not exists verified_at timestamptz;
+alter table users add column if not exists id_verified_at timestamptz;
 alter table users add column if not exists photo bytea;
 alter table users add column if not exists photo_v int not null default 0;
 alter table users add column if not exists looking_for text check (looking_for in ('men', 'women'));
