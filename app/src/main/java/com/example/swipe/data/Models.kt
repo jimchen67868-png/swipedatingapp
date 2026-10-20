@@ -2,7 +2,13 @@ package com.example.swipe.data
 
 import androidx.compose.ui.graphics.Color
 
-data class MyProfile(val name: String, val age: Int, val city: String)
+data class MyProfile(
+    val name: String,
+    val age: Int,
+    val city: String,
+    val gender: String,       // man | woman
+    val lookingFor: String    // men | women
+)
 
 private val palette = listOf(
     Color(0xFF5B6CFF), Color(0xFFE5484D), Color(0xFF1FB57A),

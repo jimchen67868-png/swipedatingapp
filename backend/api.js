@@ -18,7 +18,10 @@ function auth(req, res, next) {
 }
 
 const needUser = wrap(async (req, res, next) => {
-  const { rows } = await pool.query("select id from users where phone = $1", [req.phone]);
+  const { rows } = await pool.query(
+    "select id from users where phone = $1 and gender is not null and looking_for in ('men', 'women')",
+    [req.phone]
+  );
   if (!rows[0]) return bad(res, "Create your profile first.", 403);
   req.userId = rows[0].id;
   next();
@@ -32,31 +35,48 @@ async function isMember(matchId, userId) {
 
 // ----- my profile -----
 api.get("/me", auth, wrap(async (req, res) => {
-  const { rows } = await pool.query("select id, name, age, city from users where phone = $1", [req.phone]);
+  const { rows } = await pool.query(
+    `select id, name, age, city, gender, looking_for as "lookingFor" from users
+     where phone = $1 and gender is not null and looking_for in ('men', 'women')`,
+    [req.phone]
+  );
   rows[0] ? res.json(rows[0]) : bad(res, "No profile yet", 404);
 }));
+
+const GENDERS = ["man", "woman"];
+const LOOKING = ["men", "women"];
 
 api.put("/me", auth, wrap(async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   const city = String(req.body?.city ?? "").trim();
   const age = Number(req.body?.age);
+  const gender = req.body?.gender;
+  const lookingFor = req.body?.lookingFor;
   if (!name || name.length > 30) return bad(res, "Name must be 1 to 30 characters.");
   if (!Number.isInteger(age) || age < 18 || age > 99) return bad(res, "You must be 18 or older.");
   if (!city || city.length > 50) return bad(res, "City must be 1 to 50 characters.");
+  if (!GENDERS.includes(gender)) return bad(res, "Please choose your gender.");
+  if (!LOOKING.includes(lookingFor)) return bad(res, "Please choose who you want to meet.");
   const { rows } = await pool.query(
-    `insert into users (phone, name, age, city) values ($1, $2, $3, $4)
-     on conflict (phone) do update set name = excluded.name, age = excluded.age, city = excluded.city
-     returning id, name, age, city`,
-    [req.phone, name, age, city]
+    `insert into users (phone, name, age, city, gender, looking_for) values ($1, $2, $3, $4, $5, $6)
+     on conflict (phone) do update set name = excluded.name, age = excluded.age, city = excluded.city,
+       gender = excluded.gender, looking_for = excluded.looking_for
+     returning id, name, age, city, gender, looking_for as "lookingFor"`,
+    [req.phone, name, age, city, gender, lookingFor]
   );
   res.json(rows[0]);
 }));
 
 // ----- discover -----
 api.get("/deck", auth, needUser, wrap(async (req, res) => {
+  // Both sides must fit: I want their gender, and they want mine.
   const { rows } = await pool.query(
-    `select u.id, u.name, u.age, u.city from users u
-     where u.id <> $1 and not exists (select 1 from swipes s where s.from_id = $1 and s.to_id = u.id)
+    `select u.id, u.name, u.age, u.city
+     from users u join users me on me.id = $1
+     where u.id <> me.id and u.gender is not null and u.looking_for in ('men', 'women')
+       and u.gender = case me.looking_for when 'men' then 'man' else 'woman' end
+       and me.gender = case u.looking_for when 'men' then 'man' else 'woman' end
+       and not exists (select 1 from swipes s where s.from_id = me.id and s.to_id = u.id)
      order by random() limit 20`,
     [req.userId]
   );

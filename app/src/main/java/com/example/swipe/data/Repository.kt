@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 private fun <T> JSONArray.mapObjects(f: (JSONObject) -> T): List<T> = List(length()) { f(getJSONObject(it)) }
 
-private fun JSONObject.toMe() = MyProfile(getString("name"), getInt("age"), getString("city"))
+private fun JSONObject.toMe() = MyProfile(getString("name"), getInt("age"), getString("city"), getString("gender"), getString("lookingFor"))
 private fun JSONObject.toProfile() = Profile(getInt("id").toString(), getString("name"), getInt("age"), getString("city"))
 
 /** Talks to the backend. Every call returns a Result so the UI can show errors. */
@@ -18,7 +18,11 @@ class Repository(private val api: Api) {
     )
 
     suspend fun saveMe(p: MyProfile): Result<MyProfile> =
-        api.put("/me", JSONObject().put("name", p.name).put("age", p.age).put("city", p.city))
+        api.put(
+            "/me",
+            JSONObject().put("name", p.name).put("age", p.age).put("city", p.city)
+                .put("gender", p.gender).put("lookingFor", p.lookingFor)
+        )
             .mapCatching { JSONObject(it).toMe() }
 
     suspend fun deck(): Result<List<Profile>> =

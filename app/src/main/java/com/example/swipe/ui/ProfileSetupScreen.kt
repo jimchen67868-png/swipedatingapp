@@ -17,11 +17,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.swipe.data.MyProfile
 
+private val genderOptions = listOf("man" to "Man", "woman" to "Woman")
+private val lookingOptions = listOf("men" to "Men", "women" to "Women")
+
 @Composable
 fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, serverError: String? = null) {
     var name by rememberSaveable { mutableStateOf("") }
     var age by rememberSaveable { mutableStateOf("") }
     var city by rememberSaveable { mutableStateOf("") }
+    var gender by rememberSaveable { mutableStateOf("") }
+    var lookingFor by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun submit() {
@@ -34,9 +39,11 @@ fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, ser
             a < 18 -> "You must be 18 or older to use this app."
             a > 99 -> "Please enter a valid age."
             c.isEmpty() -> "Please enter your city."
+            gender.isEmpty() -> "Please choose your gender."
+            lookingFor.isEmpty() -> "Please choose who you want to meet."
             else -> null
         }
-        if (error == null) onSave(MyProfile(n, a!!, c))
+        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor))
     }
 
     Column(
@@ -80,10 +87,30 @@ fun ProfileSetupScreen(onSave: (MyProfile) -> Unit, saving: Boolean = false, ser
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(Modifier.height(20.dp))
+        Text("I am", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        ChipRow(genderOptions, gender) { gender = it }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Interested in", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        ChipRow(lookingOptions, lookingFor) { lookingFor = it }
+
         (error ?: serverError)?.let { Text(it, color = NopeRed, modifier = Modifier.padding(top = 12.dp)) }
         Spacer(Modifier.height(20.dp))
         Button(onClick = ::submit, enabled = !saving, modifier = Modifier.fillMaxWidth().height(52.dp)) {
             Text(if (saving) "Saving..." else "Save and continue")
+        }
+    }
+}
+
+@Composable
+private fun ChipRow(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (value, label) ->
+            FilterChip(selected = selected == value, onClick = { onSelect(value) }, label = { Text(label) })
         }
     }
 }
