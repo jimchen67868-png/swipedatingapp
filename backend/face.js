@@ -1,4 +1,6 @@
 import { createRequire } from "module";
+import fs from "node:fs";
+import os from "node:os";
 import path from "path";
 
 const require = createRequire(import.meta.url);
@@ -50,17 +52,54 @@ const NSFW_MAX = Number(process.env.NSFW_MAX) || 0.3;   // porn + hentai score t
 const SAME_MAX = Number(process.env.FACE_SAME_THRESHOLD) || 0.6; // extra photos must be this close to the main photo (lower = stricter)
 const SEXY_MAX = Number(process.env.SEXY_MAX) || 0.6;   // 'sexy' score (lingerie, revealing, suggestive) that gets a photo refused
 
+// The nudity model is a small file (about 3 MB), downloaded once from a CDN into the temp folder and loaded from there.
+// (The copy bundled inside the nsfwjs package is stored inside JavaScript and runs the free server out of memory.)
+const NSFW_BASE = process.env.NSFW_MODEL_URL ?? "https://cdn.jsdelivr.net/gh/infinitered/nsfwjs@master/models/mobilenet_v2/";
+const NSFW_CLASSES = ["Drawing", "Hentai", "Neutral", "Porn", "Sexy"];
+
+async function nsfwModelFile() {
+  const dir = path.join(os.tmpdir(), "nsfw-model");
+  const marker = path.join(dir, "model.json");
+  if (!fs.existsSync(marker)) {
+    fs.mkdirSync(dir, { recursive: true });
+    const get = async (name) => {
+      const r = await fetch(NSFW_BASE + name);
+      if (!r.ok) throw new Error(`Could not download ${name} (${r.status})`);
+      return Buffer.from(await r.arrayBuffer());
+    };
+    const json = await get("model.json");
+    for (const group of JSON.parse(json.toString()).weightsManifest) {
+      for (const p of group.paths) fs.writeFileSync(path.join(dir, p), await get(p));
+    }
+    fs.writeFileSync(marker, json); // written last, so a half-finished download is retried next time
+  }
+  return "file://" + marker;
+}
+
 let nsfwLoading;
 function loadNsfw() {
   nsfwLoading ??= (async () => {
-    require("@tensorflow/tfjs-node"); // makes sure the fast backend is the one in use
-    const mod = require("nsfwjs");
-    return (mod.load ?? mod.default.load)();
+    const { tf } = await load();
+    const url = await nsfwModelFile();
+    const model = await tf.loadLayersModel(url).catch(() => tf.loadGraphModel(url));
+    const shape = model.inputs?.[0]?.shape;
+    return { model, size: shape?.[1] ?? 224 };
   })().catch((e) => {
-    nsfwLoading = undefined;
+    nsfwLoading = undefined; // retry on the next upload
     throw e;
   });
   return nsfwLoading;
+}
+
+async function classifyNsfw(tf, { model, size }, img) {
+  const out = tf.tidy(() => model.predict(tf.image.resizeBilinear(img.toFloat(), [size, size]).div(255).expandDims(0)));
+  const raw = Array.from(await out.data());
+  out.dispose();
+  const isProbs = raw.every((v) => v >= 0 && v <= 1) && Math.abs(raw.reduce((x, y) => x + y, 0) - 1) < 0.01;
+  const exp = raw.map((v) => Math.exp(v - Math.max(...raw)));
+  const sum = exp.reduce((x, y) => x + y, 0);
+  const probs = isProbs ? raw : exp.map((v) => v / sum);
+  return Object.fromEntries(NSFW_CLASSES.map((name, i) => [name, probs[i]]));
 }
 
 /**
@@ -75,7 +114,7 @@ async function photoCheck(jpeg, main, reference) {
     const model = await loadNsfw(); // fails closed: if the model can't load the upload is refused
     const img = tf.node.decodeImage(jpeg, 3);
     try {
-      const p = Object.fromEntries((await model.classify(img)).map((x) => [x.className, x.probability]));
+      const p = await classifyNsfw(tf, model, img);
       if ((p.Porn ?? 0) + (p.Hentai ?? 0) >= NSFW_MAX) return "explicit";
       if ((p.Sexy ?? 0) >= SEXY_MAX) return "explicit";
     } finally {

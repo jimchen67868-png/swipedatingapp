@@ -17,8 +17,6 @@
     "@vladmandic/face-api": "^1.7.15"
   },
   "optionalDependencies": {
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "nsfwjs": "^4.1.0",
-    "@tensorflow/tfjs": "^4.22.0"
+    "@tensorflow/tfjs-node": "^4.22.0"
   }
 }
