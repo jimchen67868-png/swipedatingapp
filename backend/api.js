@@ -123,7 +123,9 @@ async function refusePhoto(res, buf, main, reference) {
     return true;
   }
   if (verdict === "ok") return false;
-  bad(res, PHOTO_MSG[verdict], 422);
+  const [kind, score, limit] = verdict.split(":");
+  // The score is shown so the limit can be tuned: lower score = more alike.
+  bad(res, PHOTO_MSG[kind] + (score ? ` (score ${score}, limit ${limit})` : ""), 422);
   return true;
 }
 

@@ -49,7 +49,7 @@ async function run(selfie, photo) {
 }
 
 const NSFW_MAX = Number(process.env.NSFW_MAX) || 0.3;   // porn + hentai score that gets a photo refused
-const SAME_MAX = Number(process.env.FACE_SAME_THRESHOLD) || 0.6; // extra photos must be this close to the main photo (lower = stricter)
+const SAME_MAX = Number(process.env.FACE_SAME_THRESHOLD) || 0.5; // extra photos must be this close to the main photo (lower = stricter)
 const SEXY_MAX = Number(process.env.SEXY_MAX) || 0.6;   // 'sexy' score (lingerie, revealing, suggestive) that gets a photo refused
 
 // The nudity model is a small file (about 3 MB), downloaded once from a CDN into the temp folder and loaded from there.
@@ -135,11 +135,12 @@ async function photoCheck(jpeg, main, reference) {
     if (people.length > 1) return "many_faces";
     if (main && width(people[0]) < 0.2) return "too_small";
     if (wantMatch) {
-      if (width(people[0]) < 0.1) return "too_small"; // too small to compare reliably
+      if (width(people[0]) < 0.08) return "too_small"; // too small to compare reliably
       const ref = await faces(reference);
       if (ref.length > 0) {
         const distance = Math.min(...ref.map((f) => faceapi.euclideanDistance(people[0].descriptor, f.descriptor)));
-        if (distance > SAME_MAX) return "different_person";
+        console.log(`same-person score ${distance.toFixed(2)} (limit ${SAME_MAX}), face width ${width(people[0]).toFixed(2)}`);
+        if (distance > SAME_MAX) return `different_person:${distance.toFixed(2)}:${SAME_MAX}`;
       }
     }
     return "ok";
