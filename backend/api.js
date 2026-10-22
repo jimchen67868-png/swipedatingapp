@@ -125,7 +125,11 @@ async function refusePhoto(res, buf, main, reference) {
   if (verdict === "ok") return false;
   const [kind, score, limit] = verdict.split(":");
   // The score is shown so the limit can be tuned: lower score = more alike.
-  bad(res, PHOTO_MSG[kind] + (score ? ` (score ${score}, limit ${limit})` : ""), 422);
+  const pct = (v) => Math.round(Number(v) * 100);
+  const detail = !score ? "" : kind === "too_small"
+    ? ` Your face is ${pct(score)}% of the photo width, it needs at least ${pct(limit)}%.`
+    : ` (score ${score}, limit ${limit})`;
+  bad(res, PHOTO_MSG[kind] + detail, 422);
   return true;
 }
 
