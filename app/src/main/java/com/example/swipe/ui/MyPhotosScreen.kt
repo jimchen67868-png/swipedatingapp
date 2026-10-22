@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.swipe.data.MyPhotos
-import com.example.swipe.data.readJpeg
+import com.example.swipe.data.readCheckedPhoto
 import kotlinx.coroutines.launch
 
 private const val MAX_EXTRA = 5
@@ -45,10 +45,10 @@ fun MyPhotosScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val mainPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { readJpeg(context, uri)?.let(onChangeMain) }
+        if (uri != null) scope.launch { readCheckedPhoto(context, uri, main = true)?.let(onChangeMain) }
     }
     val addPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { readJpeg(context, uri)?.let(onAdd) }
+        if (uri != null) scope.launch { readCheckedPhoto(context, uri, main = false, mainPhotoUrl = photos?.main)?.let(onAdd) }
     }
     val imageOnly = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
     var confirm by remember { mutableStateOf<Int?>(null) }

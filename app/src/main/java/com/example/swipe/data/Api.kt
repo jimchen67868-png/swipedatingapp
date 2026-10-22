@@ -16,9 +16,10 @@ class Api(context: Context) {
     suspend fun put(path: String, body: JSONObject) = call("PUT", path, body.toString().toByteArray(), "application/json")
     suspend fun post(path: String, body: JSONObject) = call("POST", path, body.toString().toByteArray(), "application/json")
     suspend fun delete(path: String) = call("DELETE", path, null, null)
-    suspend fun postBytes(path: String, bytes: ByteArray, type: String) = call("POST", path, bytes, type)
+    suspend fun postBytes(path: String, bytes: ByteArray, type: String) =
+        call("POST", path, bytes, type, PhoneCheck.forBody(bytes)?.let { mapOf("X-Phone-Check" to it) } ?: emptyMap())
 
-    private suspend fun call(method: String, path: String, body: ByteArray?, type: String?): Result<String> =
+    private suspend fun call(method: String, path: String, body: ByteArray?, type: String?, headers: Map<String, String> = emptyMap()): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val conn = URL(BuildConfig.API_BASE_URL + path).openConnection() as HttpURLConnection
@@ -26,6 +27,7 @@ class Api(context: Context) {
                 conn.connectTimeout = 60_000
                 conn.readTimeout = 60_000
                 prefs.getString("token", null)?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+                headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
                 if (body != null) {
                     conn.doOutput = true
                     conn.setRequestProperty("Content-Type", type ?: "application/json")

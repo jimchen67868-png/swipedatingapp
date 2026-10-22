@@ -11,7 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import com.example.swipe.data.readJpeg
+import com.example.swipe.data.readCheckedPhoto
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -45,7 +45,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { photo = readJpeg(context, uri) }
+        if (uri != null) scope.launch { readCheckedPhoto(context, uri, main = true)?.let { photo = it } }
     }
     val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
 

@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.swipe.data.readJpeg
+import com.example.swipe.data.readCheckedPhoto
 import kotlinx.coroutines.launch
 
 /** Shown when the profile has no accepted main photo yet. The server checks the photo shows exactly one face. */
@@ -23,7 +23,7 @@ fun AddPhotoScreen(onPhoto: (ByteArray) -> Unit, saving: Boolean, serverError: S
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch { readJpeg(context, uri)?.let(onPhoto) }
+        if (uri != null) scope.launch { readCheckedPhoto(context, uri, main = true)?.let(onPhoto) }
     }
     Column(
         Modifier.fillMaxSize().background(Page).statusBarsPadding().padding(24.dp),

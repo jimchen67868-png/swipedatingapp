@@ -122,7 +122,15 @@ async function refusePhoto(res, buf, main, reference) {
     bad(res, "Photo check is not available right now. Try again later.", 503);
     return true;
   }
-  if (verdict === "ok") return false;
+  // Double check: the phone's verdict arrives in a header. Both the phone and this server must pass the photo.
+  const phone = (res.req.get("x-phone-check") ?? "").slice(0, 60);
+  console.log(`photo check: server=${verdict} phone=${phone || "none"}`);
+  if (verdict === "ok") {
+    const phoneKind = phone.split(":")[0];
+    if (!PHOTO_MSG[phoneKind]) return false;
+    bad(res, PHOTO_MSG[phoneKind] + (phone.includes(":") ? ` (phone check ${phone.split(":")[1]})` : ""), 422);
+    return true;
+  }
   const [kind, score, limit] = verdict.split(":");
   // The score is shown so the limit can be tuned: lower score = more alike.
   const pct = (v) => Math.round(Number(v) * 100);
@@ -163,7 +171,9 @@ api.post("/me/photos", auth, needUser,
     if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return bad(res, "Please send a JPEG photo.");
     const me = await pool.query("select photo from users where id = $1", [req.userId]);
     if (!me.rows[0]?.photo) return bad(res, "Add your main photo first.");
-    if (await refusePhoto(res, b, false, me.rows[0].photo)) return;
+    // The same-person check runs on the phone. Set SERVER_SAME_PERSON=on to make the server check it too.
+    const reference = process.env.SERVER_SAME_PERSON === "on" ? me.rows[0].photo : undefined;
+    if (await refusePhoto(res, b, false, reference)) return;
     const { rows } = await pool.query(
       `insert into photos (user_id, data)
        select $1::int, $2::bytea where (select count(*) from photos where user_id = $1::int) < $3::int
