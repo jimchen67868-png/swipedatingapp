@@ -122,10 +122,7 @@ async function refusePhoto(res, buf, main, reference) {
     bad(res, "Photo check is not available right now. Try again later.", 503);
     return true;
   }
-  if (verdict === "ok" || verdict.startsWith("ok:")) {
-    res.locals.check = verdict; // for extra photos: the same-person score, shown in the app so the limit can be tuned
-    return false;
-  }
+  if (verdict === "ok") return false;
   const [kind, score, limit] = verdict.split(":");
   // The score is shown so the limit can be tuned: lower score = more alike.
   const pct = (v) => Math.round(Number(v) * 100);
@@ -174,7 +171,7 @@ api.post("/me/photos", auth, needUser,
       [req.userId, b, MAX_EXTRA]
     );
     if (!rows[0]) return bad(res, `You can add up to ${MAX_EXTRA} more photos.`);
-    res.json({ id: rows[0].id, check: res.locals.check ?? null });
+    res.json({ id: rows[0].id });
   }));
 
 api.delete("/me/photos/:id", auth, needUser, wrap(async (req, res) => {

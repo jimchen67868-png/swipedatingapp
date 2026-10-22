@@ -163,17 +163,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addPhoto(jpeg: ByteArray) = busy {
-        repo.addPhoto(jpeg)
-            .onSuccess { check ->
-                loadPhotos()
-                val p = check?.split(":")
-                _error.value = when {
-                    p == null || p.size < 3 -> "Photo added"
-                    p[1] == "none" -> "Photo added, but your main photo's face couldn't be read, so it wasn't compared."
-                    else -> "Photo added. Match score ${p[1]} (limit ${p[2]})"
-                }
-            }
-            .onFailure { fail(it) }
+        repo.addPhoto(jpeg).onSuccess { loadPhotos() }.onFailure { fail(it) }
     }
 
     fun deletePhoto(id: Int) = busy {

@@ -135,7 +135,6 @@ async function photoCheck(jpeg, main, reference) {
     if (people.length === 0) return "no_face";
     if (people.length > 1) return "many_faces";
     if (main && width(people[0]) < 0.2) return `too_small:${width(people[0]).toFixed(2)}:0.2`;
-    let note = "";
     if (wantMatch) {
       if (width(people[0]) < SAME_MIN_WIDTH) return `too_small:${width(people[0]).toFixed(2)}:${SAME_MIN_WIDTH}`; // too small to compare reliably
       const ref = await faces(reference);
@@ -143,13 +142,9 @@ async function photoCheck(jpeg, main, reference) {
         const distance = Math.min(...ref.map((f) => faceapi.euclideanDistance(people[0].descriptor, f.descriptor)));
         console.log(`same-person score ${distance.toFixed(2)} (limit ${SAME_MAX}), face width ${width(people[0]).toFixed(2)}`);
         if (distance > SAME_MAX) return `different_person:${distance.toFixed(2)}:${SAME_MAX}`;
-        note = `:${distance.toFixed(2)}:${SAME_MAX}`;
-      } else {
-        console.log("same-person check: no readable face in the main photo, so nothing to compare");
-        note = ":none:";
       }
     }
-    return "ok" + note;
+    return "ok";
   } finally {
     img.dispose();
   }
