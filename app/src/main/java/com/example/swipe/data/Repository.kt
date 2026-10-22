@@ -56,8 +56,11 @@ class Repository(private val api: Api) {
         )
     }
 
-    suspend fun addPhoto(jpeg: ByteArray): Result<Unit> =
-        api.postBytes("/me/photos", jpeg, "image/jpeg").map { }
+    /** Returns the server's same-person note (for example "ok:0.31:0.45"), or null. */
+    suspend fun addPhoto(jpeg: ByteArray): Result<String?> =
+        api.postBytes("/me/photos", jpeg, "image/jpeg").map { text ->
+            runCatching { JSONObject(text).let { if (it.isNull("check")) null else it.getString("check") } }.getOrNull()
+        }
 
     suspend fun deletePhoto(id: Int): Result<Unit> =
         api.delete("/me/photos/$id").map { }
