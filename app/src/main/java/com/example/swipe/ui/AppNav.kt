@@ -66,10 +66,10 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
         }
     ) { pad ->
         NavHost(nav, startDestination = "swipe", modifier = Modifier.padding(pad)) {
-            composable("swipe") { SwipeScreen(deck, vm::onSwiped, onReport = { reportTarget = it }) }
+            composable("swipe") { SwipeScreen(deck, vm::onSwiped, onReport = { reportTarget = it }, onOpenProfile = { nav.navigate("deckprofile/${it.id}") }) }
             composable("matches") {
                 LaunchedEffect(Unit) { vm.refreshMatches() }
-                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onLogout = onLogout, onPhotos = { nav.navigate("photos") },
+                MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onProfile = { nav.navigate("profile/${it.matchId}") }, onLogout = onLogout, onPhotos = { nav.navigate("photos") },
                     verified = verified == true, idVerified = idVerified == true, onVerify = { nav.navigate("verify") },
                     onDeleteAccount = { confirmDelete = true })
             }
@@ -87,6 +87,24 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
                     onSubmit = vm::verify, onSubmitId = vm::verifyId, onBack = { nav.popBackStack() }
                 )
             }
+            composable("deckprofile/{id}") { entry ->
+                val id = entry.arguments?.getString("id")
+                val p = deck.firstOrNull { it.id == id }
+                if (p != null) {
+                    ProfileScreen(
+                        profile = p, onBack = { nav.popBackStack() }, onReport = { reportTarget = p },
+                        onLike = { vm.onSwiped(p, true); nav.popBackStack() },
+                        onPass = { vm.onSwiped(p, false); nav.popBackStack() }
+                    )
+                }
+            }
+            composable("profile/{id}") { entry ->
+                val id = entry.arguments?.getString("id")?.toLongOrNull()
+                val match = matches.firstOrNull { it.matchId == id }
+                if (match != null) {
+                    ProfileScreen(profile = match.profile, onBack = { nav.popBackStack() }, onReport = { reportTarget = match.profile })
+                }
+            }
             composable("chat/{id}") { entry ->
                 val id = entry.arguments?.getString("id")?.toLongOrNull()
                 val match = matches.firstOrNull { it.matchId == id }
@@ -100,7 +118,8 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
                         messages = messages,
                         onSend = { text -> vm.send(id, text) },
                         onBack = { nav.popBackStack() },
-                        onReport = { reportTarget = match.profile }
+                        onReport = { reportTarget = match.profile },
+                        onProfile = { nav.navigate("profile/$id") }
                     )
                 }
             }
@@ -120,7 +139,16 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
     }
 
     reportTarget?.let { p ->
-        val leaveChat = { if (route?.startsWith("chat") == true) nav.popBackStack() }
+        // After blocking someone, go back to the matches list (their chat and profile no longer exist).
+        val leaveChat = {
+            when {
+                route?.startsWith("deckprofile") == true -> nav.popBackStack()
+                route?.startsWith("chat") == true || route?.startsWith("profile") == true -> {
+                    if (!nav.popBackStack("matches", false)) nav.popBackStack()
+                }
+                else -> Unit
+            }
+        }
         ReportDialog(
             name = p.name,
             onReport = { reason -> reportTarget = null; vm.reportOrBlock(p, reason); leaveChat() },

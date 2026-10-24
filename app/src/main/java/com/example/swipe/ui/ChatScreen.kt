@@ -1,6 +1,7 @@
 package com.example.swipe.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,7 +26,8 @@ fun ChatScreen(
     messages: List<Message>,
     onSend: (String) -> Unit,
     onBack: () -> Unit,
-    onReport: () -> Unit
+    onReport: () -> Unit,
+    onProfile: () -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -36,9 +38,11 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize().background(Page).statusBarsPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-            Avatar(match.profile, 36.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(match.profile.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.clickable { onProfile() }, verticalAlignment = Alignment.CenterVertically) {
+                Avatar(match.profile, 36.dp)
+                Spacer(Modifier.width(12.dp))
+                Text(match.profile.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onReport) { Text("Report") }
         }

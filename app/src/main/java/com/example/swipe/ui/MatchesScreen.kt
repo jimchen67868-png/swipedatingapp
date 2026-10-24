@@ -67,6 +67,7 @@ fun VerifiedBadge(modifier: Modifier = Modifier) {
 fun MatchesScreen(
     matches: List<MatchItem>,
     onOpen: (MatchItem) -> Unit,
+    onProfile: (MatchItem) -> Unit,
     onLogout: () -> Unit,
     onPhotos: () -> Unit,
     verified: Boolean,
@@ -103,7 +104,7 @@ fun MatchesScreen(
                     ListItem(
                         modifier = Modifier.clickable { onOpen(m) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        leadingContent = { Avatar(m.profile) },
+                        leadingContent = { Box(Modifier.clickable { onProfile(m) }) { Avatar(m.profile) } },
                         headlineContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(m.profile.name, fontWeight = FontWeight.SemiBold)

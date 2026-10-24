@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
@@ -43,6 +44,7 @@ fun SwipeScreen(
     deck: List<Profile>,
     onSwiped: (Profile, Boolean) -> Unit,
     onReport: (Profile) -> Unit,
+    onOpenProfile: (Profile) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -84,6 +86,7 @@ fun SwipeScreen(
                     profile = top,
                     likeAlpha = (offsetX.value / threshold).coerceIn(0f, 1f),
                     nopeAlpha = (-offsetX.value / threshold).coerceIn(0f, 1f),
+                    onOpen = { onOpenProfile(top) },
                     modifier = Modifier
                         .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                         .rotate(offsetX.value / screenWidthPx * 15f)
@@ -122,7 +125,8 @@ private fun ProfileCard(
     profile: Profile,
     modifier: Modifier = Modifier,
     likeAlpha: Float = 0f,
-    nopeAlpha: Float = 0f
+    nopeAlpha: Float = 0f,
+    onOpen: (() -> Unit)? = null
 ) {
     Box(
         modifier = modifier
@@ -146,17 +150,6 @@ private fun ProfileCard(
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
             )
             if (photos.size > 1) {
-                // Tap the left or right half of the card to see the previous or next photo.
-                Row(Modifier.fillMaxSize()) {
-                    Box(
-                        Modifier.weight(1f).fillMaxHeight()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (shown > 0) shown-- }
-                    )
-                    Box(
-                        Modifier.weight(1f).fillMaxHeight()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (shown < photos.lastIndex) shown++ }
-                    )
-                }
                 Row(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -168,6 +161,14 @@ private fun ProfileCard(
                         )
                     }
                 }
+            }
+        }
+        // Tap the left or right side to change photo, tap the middle (or the name) to open the full profile.
+        if (onOpen != null) {
+            Row(Modifier.fillMaxSize()) {
+                if (photos.size > 1) Box(Modifier.weight(1f).fillMaxHeight().tap { if (shown > 0) shown-- })
+                Box(Modifier.weight(if (photos.size > 1) 2f else 1f).fillMaxHeight().tap { onOpen() })
+                if (photos.size > 1) Box(Modifier.weight(1f).fillMaxHeight().tap { if (shown < photos.lastIndex) shown++ })
             }
         }
         Column(
@@ -186,20 +187,29 @@ private fun ProfileCard(
             }
             Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
         }
-        Stamp("LIKE", LikeGreen, likeAlpha, Modifier.align(Alignment.TopStart).padding(24.dp).rotate(-12f))
-        Stamp("NOPE", NopeRed, nopeAlpha, Modifier.align(Alignment.TopEnd).padding(24.dp).rotate(12f))
+        // Swiping right shows a heart, swiping left shows a cross. They fade in as the card is dragged.
+        StampIcon(Icons.Filled.Favorite, LikeGreen, likeAlpha, Modifier.align(Alignment.Center))
+        StampIcon(Icons.Filled.Close, NopeRed, nopeAlpha, Modifier.align(Alignment.Center))
     }
 }
 
+private fun Modifier.tap(onClick: () -> Unit): Modifier = composed {
+    clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+}
+
 @Composable
-private fun Stamp(text: String, color: Color, alpha: Float, modifier: Modifier) {
-    Text(
-        text, color = color, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold,
-        modifier = modifier
+private fun StampIcon(icon: ImageVector, color: Color, alpha: Float, modifier: Modifier) {
+    if (alpha <= 0f) return
+    Box(
+        modifier
+            .size(120.dp)
+            .scale(0.7f + 0.3f * alpha)
             .alpha(alpha)
-            .border(3.dp, color, RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-    )
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.85f))
+            .border(4.dp, color, CircleShape),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(72.dp)) }
 }
 
 @Composable

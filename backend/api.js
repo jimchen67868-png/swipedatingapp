@@ -350,7 +350,8 @@ api.get("/admin", (_req, res) => {
 <title>Reports</title><body style="font-family:sans-serif;margin:12px;max-width:640px">
 <h2>Reports</h2><input id="k" type="password" placeholder="Admin key" style="padding:8px">
 <button id="go" style="padding:8px">Load</button>
-<h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="tdel" style="padding:8px">Delete test users</button>
+<h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="taddp" style="padding:8px">Add 12 test users with photo</button> <button id="tdel" style="padding:8px">Delete test users</button>
+<button id="tpho" style="padding:8px;margin-top:6px">Give test users photos</button>
 <h3>Delete an account by phone</h3><input id="ph" placeholder="Phone number" style="padding:8px"><button id="del" style="padding:8px">Delete</button><div id="out"></div><script src="/admin.js"></script></body>`);
 });
 
@@ -396,16 +397,25 @@ async function load() {
   }
 }
 document.getElementById("go").onclick = load;
-async function testUsers(method) {
+async function testUsers(method, withPhotos) {
   key = document.getElementById("k").value; sessionStorage.setItem("k", key);
   try {
-    const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12 }) : undefined });
+    const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12, withPhotos: withPhotos === true }) : undefined });
     const b = await r.json();
     alert(r.ok ? (b.added !== undefined ? "Added " + b.added : "Deleted " + b.deleted) : b.error);
   } catch (e) { alert(e.message); }
 }
-document.getElementById("tadd").onclick = () => testUsers("POST");
+document.getElementById("tadd").onclick = () => testUsers("POST", false);
+document.getElementById("taddp").onclick = () => testUsers("POST", true);
 document.getElementById("tdel").onclick = () => testUsers("DELETE");
+document.getElementById("tpho").onclick = async () => {
+  key = document.getElementById("k").value; sessionStorage.setItem("k", key);
+  try {
+    const r = await fetch("/admin/test-photos", { method: "POST", headers: { "x-admin-key": key } });
+    const b = await r.json();
+    alert(r.ok ? "Photos added for " + b.updated + " test users" : b.error);
+  } catch (e) { alert(e.message); }
+};
 document.getElementById("del").onclick = async () => {
   const phone = document.getElementById("ph").value.trim();
   if (!phone || !confirm("Permanently delete the account for " + phone + "?")) return;
@@ -468,15 +478,39 @@ const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // Fake people for testing. They like you back, answer chat messages, and only appear when SHOW_TEST_USERS=on.
 api.post("/admin/test-users", adminLimit, admin, wrap(async (req, res) => {
   const count = Math.min(Math.max(Number(req.body?.count) || 12, 1), 40);
+  const withPhotos = req.body?.withPhotos === true;
   for (let i = 0; i < count; i++) {
     const gender = i % 2 === 0 ? "woman" : "man";
     const lookingFor = Math.floor(i / 2) % 2 === 0 ? "men" : "women"; // all four combinations, so everyone sees some
-    await pool.query(
-      "insert into users (phone, name, age, city, gender, looking_for, is_test) values ($1, $2, $3, $4, $5, $6, true)",
+    const ins = await pool.query(
+      "insert into users (phone, name, age, city, gender, looking_for, is_test) values ($1, $2, $3, $4, $5, $6, true) returning id",
       ["test-" + crypto.randomUUID(), pick(TEST_NAMES[gender]), 20 + Math.floor(Math.random() * 21), pick(TEST_CITIES), gender, lookingFor]
     );
+    if (withPhotos) await giveTestPhotos(ins.rows[0].id);
   }
   res.json({ added: count });
+}));
+
+// A main photo plus 1 to 3 more, so the photo gallery can be tested. Skipped quietly if the image library isn't available.
+async function giveTestPhotos(userId) {
+  try {
+    const { testPhoto } = await import("./face.js");
+    const hue = Math.floor(Math.random() * 360);
+    await pool.query("update users set photo = $1, photo_v = photo_v + 1 where id = $2", [await testPhoto(hue, 0), userId]);
+    await pool.query("delete from photos where user_id = $1", [userId]);
+    const extras = 1 + Math.floor(Math.random() * 3);
+    for (let k = 1; k <= extras; k++) {
+      await pool.query("insert into photos (user_id, data) values ($1, $2)", [userId, await testPhoto((hue + k * 35) % 360, k)]);
+    }
+  } catch (e) {
+    console.error("test photos failed:", e.message);
+  }
+}
+
+api.post("/admin/test-photos", adminLimit, admin, wrap(async (_req, res) => {
+  const { rows } = await pool.query("select id from users where is_test");
+  for (const u of rows) await giveTestPhotos(u.id);
+  res.json({ updated: rows.length });
 }));
 
 api.delete("/admin/test-users", adminLimit, admin, wrap(async (_req, res) => {

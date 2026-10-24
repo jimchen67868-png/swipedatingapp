@@ -189,3 +189,48 @@ export function moderatePhoto(jpeg, main, reference) {
   chain = result.catch(() => {});
   return result;
 }
+
+// ---------- placeholder pictures for the fake test users (colorful gradient with a person shape) ----------
+function hsl(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))));
+  };
+  return [f(0), f(8), f(4)];
+}
+
+export async function testPhoto(hue, variant) {
+  const tf = require("@tensorflow/tfjs-node");
+  const w = 360;
+  const h = 480;
+  const top = hsl(hue, 0.65, 0.6);
+  const bottom = hsl((hue + 40) % 360, 0.65, 0.35);
+  const headColor = hsl((hue + 20) % 360, 0.5, 0.85);
+  const bodyColor = hsl((hue + 200) % 360, 0.45, 0.5);
+  const hx = w * (0.5 + 0.08 * (variant % 3 - 1));
+  const hy = h * (0.36 + 0.02 * (variant % 3));
+  const hr = w * 0.17;
+  const brx = w * 0.4;
+  const bry = h * 0.33;
+  const data = new Int32Array(w * h * 3);
+  let i = 0;
+  for (let y = 0; y < h; y++) {
+    const t = y / h;
+    for (let x = 0; x < w; x++) {
+      let c;
+      if ((x - hx) ** 2 + (y - hy) ** 2 <= hr * hr) c = headColor;
+      else if (((x - hx) / brx) ** 2 + ((y - h) / bry) ** 2 <= 1) c = bodyColor;
+      else c = [0, 1, 2].map((k) => Math.round(top[k] + (bottom[k] - top[k]) * t));
+      data[i++] = c[0];
+      data[i++] = c[1];
+      data[i++] = c[2];
+    }
+  }
+  const img = tf.tensor3d(data, [h, w, 3], "int32");
+  try {
+    return Buffer.from(await tf.node.encodeJpeg(img, "rgb", 85));
+  } finally {
+    img.dispose();
+  }
+}
