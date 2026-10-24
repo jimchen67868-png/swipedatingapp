@@ -283,6 +283,11 @@ api.post("/me/verify-id", auth, needUser, idLimit, express.json({ limit: "3mb" }
   if (!id.ok) return bad(res, "We couldn't find the face on your ID. Retake the photo flat, in focus and without glare.", 422);
   if (prof.distance > limits.MATCH_MAX) return bad(res, "Your selfie doesn't match your profile photo.", 422);
   if (id.distance > limits.MATCH_ID_MAX) return bad(res, "Your selfie doesn't match the photo on your ID.", 422);
+  // The face on the ID must also match the main profile photo directly.
+  if (r.cross !== null && r.cross > limits.MATCH_ID_MAX) {
+    return bad(res, `The photo on your ID doesn't match your main profile photo. (score ${r.cross.toFixed(2)}, limit ${limits.MATCH_ID_MAX})`, 422);
+  }
+  console.log(`id check: selfie-profile ${prof.distance.toFixed(2)}, selfie-id ${id.distance.toFixed(2)}, id-profile ${r.cross === null ? "n/a" : r.cross.toFixed(2)}`);
 
   await pool.query("update users set verified_at = now(), id_verified_at = now() where id = $1", [req.userId]);
   res.json({ verified: true, idVerified: true });

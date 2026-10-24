@@ -159,15 +159,22 @@ async function runMany(selfie, others) {
   if (s.length === 0) return { ok: false, reason: "no_face_selfie" };
   if (s.length > 1) return { ok: false, reason: "many_faces" };
   const results = [];
+  const all = []; // the faces found in each of the other photos
   for (const other of others) {
     const p = await faces(other);
+    all.push(p);
     results.push(
       p.length === 0
         ? { ok: false, reason: "no_face_photo" }
         : { ok: true, distance: Math.min(...p.map((f) => faceapi.euclideanDistance(s[0].descriptor, f.descriptor))) }
     );
   }
-  return { ok: true, results };
+  // How alike the faces in the first two other photos are to each other (used to compare an ID photo with the profile photo).
+  let cross = null;
+  if (all.length >= 2 && all[0].length > 0 && all[1].length > 0) {
+    cross = Math.min(...all[0].flatMap((a) => all[1].map((b) => faceapi.euclideanDistance(a.descriptor, b.descriptor))));
+  }
+  return { ok: true, results, cross };
 }
 
 // One check at a time, so a few people verifying together cannot run the free server out of memory.
