@@ -30,17 +30,20 @@ import com.example.swipe.data.Profile
 @Composable
 fun ProfileScreen(
     profile: Profile,
-    onBack: () -> Unit,
-    onReport: () -> Unit,
+    onBack: (() -> Unit)?,
+    onReport: (() -> Unit)?,
     onLike: (() -> Unit)? = null,
-    onPass: (() -> Unit)? = null
+    onPass: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
+    subtitle: String? = null
 ) {
     val photos = profile.photos
     Column(Modifier.fillMaxSize().background(Page).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onReport) { Text("Report") }
+            if (onEdit != null) TextButton(onClick = onEdit) { Text("Edit photos") }
+            if (onReport != null) TextButton(onClick = onReport) { Text("Report") }
         }
         Box(
             Modifier
@@ -50,17 +53,19 @@ fun ProfileScreen(
                 .clip(RoundedCornerShape(24.dp))
                 .background(Brush.verticalGradient(listOf(profile.tint, profile.tint.copy(alpha = 0.55f))))
         ) {
-            Text(
-                profile.name.first().toString(),
-                color = Color.White.copy(alpha = 0.25f), fontSize = 160.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            if (photos.isEmpty()) {
+                Text(
+                    profile.name.first().toString(),
+                    color = Color.White.copy(alpha = 0.25f), fontSize = 160.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
             if (photos.isNotEmpty()) {
                 val pager = rememberPagerState { photos.size }
                 HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                     AsyncImage(
                         model = photos[page], contentDescription = profile.name,
-                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                        contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
                     )
                 }
                 if (photos.size > 1) {
@@ -92,6 +97,7 @@ fun ProfileScreen(
                     }
                 }
                 Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                subtitle?.let { Text(it, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp) }
             }
         }
         if (onLike != null && onPass != null) {

@@ -24,10 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.swipe.data.readDobCandidates
+import com.example.swipe.data.readIdScan
 import com.example.swipe.data.readJpeg
 import kotlinx.coroutines.launch
 import java.io.File
+
+private const val SHOW_READ_TEXT = true // shows the text the phone read when no birth date was found, to help fix it
 
 @Composable
 fun VerifyScreen(
@@ -71,12 +73,14 @@ fun VerifyScreen(
                 scanning = true
                 note = null
                 val jpeg = readJpeg(context, uri, 1280)
-                val dates = readDobCandidates(context, uri)
+                val scan = readIdScan(context, uri)
+                val dates = scan.dates
                 wipe()
                 scanning = false
                 when {
                     jpeg == null -> note = "Couldn't read the photo. Try again."
-                    dates.isEmpty() -> note = "We couldn't read the birth date. Retake the photo with the whole card flat, in focus and without glare."
+                    dates.isEmpty() -> note = "We couldn't find a birth date. Photograph the side that shows it: whole card in frame, flat, in focus, no glare." +
+                        (if (SHOW_READ_TEXT) "\n\nWhat the phone read (only shown on your screen):\n" + scan.text.replace(Regex("\\s+"), " ").take(240).ifBlank { "nothing" } else "")
                     else -> { idJpeg = jpeg; dob = dates }
                 }
             }

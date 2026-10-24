@@ -135,19 +135,21 @@ private fun ProfileCard(
             .clip(RoundedCornerShape(24.dp))
             .background(Brush.verticalGradient(listOf(profile.tint, profile.tint.copy(alpha = 0.55f))))
     ) {
-        Text(
-            profile.name.first().toString(),
-            color = Color.White.copy(alpha = 0.25f),
-            fontSize = 160.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.Center)
-        )
+        if (profile.photos.isEmpty()) {
+            Text(
+                profile.name.first().toString(),
+                color = Color.White.copy(alpha = 0.25f),
+                fontSize = 160.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
         val photos = profile.photos
         var shown by remember(profile.id) { mutableIntStateOf(0) }
         if (photos.isNotEmpty()) {
             AsyncImage(
                 model = photos[shown.coerceIn(0, photos.lastIndex)], contentDescription = profile.name,
-                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()
             )
             if (photos.size > 1) {
                 Row(

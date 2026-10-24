@@ -26,36 +26,57 @@ private fun valid(y: Int, m: Int, d: Int, nowY: Int): Boolean {
     return d <= days[m - 1]
 }
 
+private val CJK = Regex("""(?<!\d)(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})""")
+private val SPACED = Regex("""(?<!\d)((?:19|20)\d{2})[ ]+(\d{1,2})[ ]+(\d{1,2})(?!\d)""")
+private val EIGHT = Regex("""(?<!\d)((?:19|20)\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)""")
+private val CHINA_ID = Regex("""(?<!\d)[1-9]\d{5}((?:19|20)\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)""")
+private val YYMMDD_IC = Regex("""(?<!\d)(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[-\s]?\d{2}[-\s]?\d{4}(?!\d)""") // Malaysia style 900512-14-5678
+private val MRZ = Regex("""(?<!\d)(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d[MFmf<]""")                 // passport and ID card machine-readable lines
+
 /**
  * Finds the birth date in text read from an ID. The birth date is normally the earliest date on the card.
- * If day and month could be swapped (04/03/1990), both readings are returned and the server decides.
+ * If day and month could be swapped (04/03/1990), or the century is unclear (a two-digit year), every reading is
+ * returned and the server decides using the age on the profile.
+ * Understands: 12/05/1990, 12.05.1990, 1990-05-12, 12 MAY 1990, 1990年5月12日, 19900512, Chinese ID numbers,
+ * Malaysian IC numbers and passport machine-readable lines.
  */
 fun parseDobCandidates(text: String, nowY: Int = Calendar.getInstance().get(Calendar.YEAR)): List<String> {
     val found = mutableListOf<List<Ymd>>()
+    val compact = text.replace(Regex("\\s+"), "") // some cards are read with stray spaces inside long numbers
+
+    fun add(vararg options: Ymd?) {
+        val ok = options.filterNotNull().filter { valid(it.y, it.m, it.d, nowY) }
+        if (ok.isNotEmpty()) found.add(ok)
+    }
+
     NUM.findAll(text).forEach { m ->
         val a = m.groupValues[1].toInt()
         val b = m.groupValues[2].toInt()
         val y = m.groupValues[3].toInt()
-        val opts = listOfNotNull(
-            if (valid(y, b, a, nowY)) Ymd(y, b, a) else null,
-            if (a != b && valid(y, a, b, nowY)) Ymd(y, a, b) else null
-        )
-        if (opts.isNotEmpty()) found.add(opts)
+        add(Ymd(y, b, a), if (a != b) Ymd(y, a, b) else null)
     }
-    ISO.findAll(text).forEach { m ->
-        val y = m.groupValues[1].toInt()
-        val mo = m.groupValues[2].toInt()
-        val d = m.groupValues[3].toInt()
-        if (valid(y, mo, d, nowY)) found.add(listOf(Ymd(y, mo, d)))
-    }
+    ISO.findAll(text).forEach { m -> add(Ymd(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())) }
+    CJK.findAll(text).forEach { m -> add(Ymd(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())) }
+    SPACED.findAll(text).forEach { m -> add(Ymd(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())) }
     NAMED.findAll(text).forEach { m ->
-        val d = m.groupValues[1].toInt()
         val mo = MONTHS.indexOf(m.groupValues[2].take(3).uppercase()) + 1
-        val y = m.groupValues[3].toInt()
-        if (mo > 0 && valid(y, mo, d, nowY)) found.add(listOf(Ymd(y, mo, d)))
+        if (mo > 0) add(Ymd(m.groupValues[3].toInt(), mo, m.groupValues[1].toInt()))
+    }
+    EIGHT.findAll(text).forEach { m -> add(Ymd(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())) }
+    CHINA_ID.findAll(compact).forEach { m -> add(Ymd(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())) }
+    for (re in listOf(YYMMDD_IC, MRZ)) {
+        re.findAll(compact).forEach { m ->
+            val yy = m.groupValues[1].toInt()
+            val mo = m.groupValues[2].toInt()
+            val d = m.groupValues[3].toInt()
+            add(Ymd(1900 + yy, mo, d), Ymd(2000 + yy, mo, d))
+        }
     }
     return found.minByOrNull { g -> g.minOf { it.key } }?.map { it.iso() }.orEmpty()
 }
+
+/** What the phone read from the ID photo, and the birth dates it could work out. Nothing here leaves the phone. */
+class IdScan(val dates: List<String>, val text: String)
 
 /** Reads the text on the ID photo on the phone. The photo is not sent anywhere by this function. */
 suspend fun readDobCandidates(context: Context, uri: Uri): List<String> {
@@ -70,4 +91,18 @@ suspend fun readDobCandidates(context: Context, uri: Uri): List<String> {
             .onFailure { if (cont.isActive) cont.resume("") }
     }
     return parseDobCandidates(text)
+}
+
+suspend fun readIdScan(context: Context, uri: Uri): IdScan {
+    val text = suspendCancellableCoroutine<String> { cont ->
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        runCatching { InputImage.fromFilePath(context, uri) }
+            .onSuccess { image ->
+                recognizer.process(image)
+                    .addOnSuccessListener { if (cont.isActive) cont.resume(it.text) }
+                    .addOnFailureListener { if (cont.isActive) cont.resume("") }
+            }
+            .onFailure { if (cont.isActive) cont.resume("") }
+    }
+    return IdScan(parseDobCandidates(text), text)
 }

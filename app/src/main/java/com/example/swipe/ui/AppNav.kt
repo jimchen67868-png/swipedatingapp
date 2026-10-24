@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Person
+import com.example.swipe.data.MyProfile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.example.swipe.data.Profile
@@ -18,7 +20,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVerified: Boolean = false, vm: AppViewModel = viewModel()) {
+fun AppNav(onLogout: () -> Unit, me: MyProfile? = null, initialVerified: Boolean = false, initialIdVerified: Boolean = false, vm: AppViewModel = viewModel()) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val deck by vm.deck.collectAsStateWithLifecycle()
@@ -47,7 +49,7 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (route == "swipe" || route == "matches") {
+            if (route == "swipe" || route == "matches" || route == "me") {
                 NavigationBar {
                     NavigationBarItem(
                         selected = route == "swipe",
@@ -61,6 +63,12 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
                         icon = { Icon(Icons.Filled.Email, null) },
                         label = { Text("Matches") }
                     )
+                    NavigationBarItem(
+                        selected = route == "me",
+                        onClick = { nav.goTo("me") },
+                        icon = { Icon(Icons.Filled.Person, null) },
+                        label = { Text("Me") }
+                    )
                 }
             }
         }
@@ -72,6 +80,24 @@ fun AppNav(onLogout: () -> Unit, initialVerified: Boolean = false, initialIdVeri
                 MatchesScreen(matches, onOpen = { nav.navigate("chat/${it.matchId}") }, onProfile = { nav.navigate("profile/${it.matchId}") }, onLogout = onLogout, onPhotos = { nav.navigate("photos") },
                     verified = verified == true, idVerified = idVerified == true, onVerify = { nav.navigate("verify") },
                     onDeleteAccount = { confirmDelete = true })
+            }
+            composable("me") {
+                LaunchedEffect(Unit) { vm.loadPhotos() }
+                if (me != null) {
+                    val mine = Profile(
+                        id = "me", name = me.name, age = me.age, city = me.city,
+                        photoUrl = photos?.main, verified = verified == true,
+                        extraPhotos = photos?.extras?.map { it.url }.orEmpty()
+                    )
+                    val details = buildList {
+                        add(if (me.lookingFor == "men") "Interested in men" else "Interested in women")
+                        if (idVerified == true) add("ID verified") else if (verified == true) add("Photo verified")
+                    }.joinToString(" - ")
+                    ProfileScreen(
+                        profile = mine, onBack = null, onReport = null,
+                        onEdit = { nav.navigate("photos") }, subtitle = details
+                    )
+                }
             }
             composable("photos") {
                 LaunchedEffect(Unit) { vm.loadPhotos() }

@@ -77,7 +77,7 @@ fun MyPhotosScreen(
             item {
                 Box(tile.clickable(enabled = !busy) { mainPicker.launch(imageOnly) }) {
                     if (photos?.main != null) {
-                        AsyncImage(photos.main, "Main photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        AsyncImage(photos.main, "Main photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     }
                     Text(
                         "Main - tap to change", color = Color.White, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -87,7 +87,7 @@ fun MyPhotosScreen(
             }
             items(extras, key = { it.id }) { slot ->
                 Box(tile) {
-                    AsyncImage(slot.url, "Photo", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(slot.url, "Photo", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     Box(
                         Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp).clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.6f)).clickable(enabled = !busy) { confirm = slot.id },
