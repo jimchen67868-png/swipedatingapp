@@ -352,7 +352,7 @@ api.get("/admin", (_req, res) => {
 <button id="go" style="padding:8px">Load</button>
 <h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="taddp" style="padding:8px">Add 12 test users with photo</button> <button id="tdel" style="padding:8px">Delete test users</button>
 <button id="tpho" style="padding:8px;margin-top:6px">Give test users photos</button>
-<h3>Delete an account by phone</h3><input id="ph" placeholder="Phone number" style="padding:8px"><button id="del" style="padding:8px">Delete</button><div id="out"></div><script src="/admin.js"></script></body>`);
+<h3>Delete an account by phone</h3><input id="ph" placeholder="Phone number" style="padding:8px"><button id="del" style="padding:8px">Delete</button><div id="tbox"></div><div id="out"></div><script src="/admin.js"></script></body>`);
 });
 
 api.get("/admin.js", (_req, res) => {
@@ -373,8 +373,57 @@ function act(label, method, path) {
     try { await call(method, path); load(); } catch (e) { alert(e.message); }
   } });
 }
+function toJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 800 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not read the image"))), "image/jpeg", 0.85);
+    };
+    img.onerror = () => reject(new Error("Could not read the image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+function choose(onFile) {
+  const i = document.createElement("input");
+  i.type = "file"; i.accept = "image/*";
+  i.onchange = () => { if (i.files[0]) onFile(i.files[0]); };
+  i.click();
+}
+function uploadFor(id, kind) {
+  return el("button", { textContent: kind === "main" ? "Set main photo" : "Add photo", style: "margin:4px;padding:6px", onclick: () => choose(async (file) => {
+    try {
+      const blob = await toJpeg(file);
+      const r = await fetch("/admin/test-users/" + id + "/photo?kind=" + kind, { method: "POST", headers: { "x-admin-key": key, "Content-Type": "image/jpeg" }, body: blob });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || r.status);
+      load();
+    } catch (e) { alert(e.message); }
+  }) });
+}
+async function loadTestUsers() {
+  const box = document.getElementById("tbox");
+  box.replaceChildren();
+  let rows;
+  try { rows = await call("GET", "/admin/test-users"); } catch (e) { return; }
+  for (const u of rows) {
+    const card = el("div", { style: "border:1px solid #ccc;border-radius:8px;padding:8px;margin:8px 0" });
+    card.append(el("div", { textContent: "#" + u.id + " " + u.name + ", " + u.age + ", " + u.city + " (" + u.gender + ", wants " + u.looking_for + ")" }));
+    const pics = el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin:6px 0" });
+    if (u.has_photo) pics.append(el("div", {}, el("img", { src: "/photo/" + u.id + "?v=" + u.photo_v, style: "width:90px;border:2px solid #333;display:block" }), act("Remove main", "POST", "/admin/users/" + u.id + "/remove-photo")));
+    for (const id of u.extra_photos) pics.append(el("div", {}, el("img", { src: "/photo/extra/" + id, style: "width:90px;display:block" }), act("Delete", "DELETE", "/admin/photos/" + id)));
+    card.append(pics);
+    card.append(uploadFor(u.id, "main"));
+    card.append(uploadFor(u.id, "extra"));
+    box.append(card);
+  }
+}
 async function load() {
   key = document.getElementById("k").value; sessionStorage.setItem("k", key);
+  loadTestUsers();
   out.replaceChildren();
   let rows;
   try { rows = await call("GET", "/admin/reports"); } catch (e) { out.append(e.message); return; }
@@ -403,6 +452,7 @@ async function testUsers(method, withPhotos) {
     const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12, withPhotos: withPhotos === true }) : undefined });
     const b = await r.json();
     alert(r.ok ? (b.added !== undefined ? "Added " + b.added : "Deleted " + b.deleted) : b.error);
+    load();
   } catch (e) { alert(e.message); }
 }
 document.getElementById("tadd").onclick = () => testUsers("POST", false);
@@ -414,6 +464,7 @@ document.getElementById("tpho").onclick = async () => {
     const r = await fetch("/admin/test-photos", { method: "POST", headers: { "x-admin-key": key } });
     const b = await r.json();
     alert(r.ok ? "Photos added for " + b.updated + " test users" : b.error);
+    load();
   } catch (e) { alert(e.message); }
 };
 document.getElementById("del").onclick = async () => {
@@ -506,6 +557,27 @@ async function giveTestPhotos(userId) {
     console.error("test photos failed:", e.message);
   }
 }
+
+api.get("/admin/test-users", adminLimit, admin, wrap(async (_req, res) => {
+  const { rows } = await pool.query(
+    `select u.id, u.name, u.age, u.city, u.gender, u.looking_for, (u.photo is not null) as has_photo, u.photo_v,
+            (select coalesce(json_agg(p.id order by p.id), '[]'::json) from photos p where p.user_id = u.id) as extra_photos
+     from users u where u.is_test order by u.id`
+  );
+  res.json(rows);
+}));
+
+// Upload your own picture for a test user (kind=main or kind=extra). No face or content checks: only you can do this.
+api.post("/admin/test-users/:id/photo", adminLimit, admin, express.raw({ type: "image/jpeg", limit: "800kb" }), wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const b = req.body;
+  if (!Number.isInteger(id)) return bad(res, "Bad id.");
+  if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return bad(res, "Please send a JPEG photo.");
+  if (!(await pool.query("select 1 from users where id = $1 and is_test", [id])).rowCount) return bad(res, "Not a test user.", 404);
+  if (req.query.kind === "main") await pool.query("update users set photo = $1, photo_v = photo_v + 1 where id = $2", [b, id]);
+  else await pool.query("insert into photos (user_id, data) values ($1, $2)", [id, b]);
+  res.json({ ok: true });
+}));
 
 api.post("/admin/test-photos", adminLimit, admin, wrap(async (_req, res) => {
   const { rows } = await pool.query("select id from users where is_test");
