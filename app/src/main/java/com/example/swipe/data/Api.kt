@@ -16,8 +16,7 @@ class Api(context: Context) {
     suspend fun put(path: String, body: JSONObject) = call("PUT", path, body.toString().toByteArray(), "application/json")
     suspend fun post(path: String, body: JSONObject) = call("POST", path, body.toString().toByteArray(), "application/json")
     suspend fun delete(path: String) = call("DELETE", path, null, null)
-    suspend fun postBytes(path: String, bytes: ByteArray, type: String) =
-        call("POST", path, bytes, type, PhoneCheck.forBody(bytes)?.let { mapOf("X-Phone-Check" to it) } ?: emptyMap())
+    suspend fun postBytes(path: String, bytes: ByteArray, type: String) = call("POST", path, bytes, type)
 
     private suspend fun call(method: String, path: String, body: ByteArray?, type: String?, headers: Map<String, String> = emptyMap()): Result<String> =
         withContext(Dispatchers.IO) {

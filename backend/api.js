@@ -122,15 +122,7 @@ async function refusePhoto(res, buf, main, reference) {
     bad(res, "Photo check is not available right now. Try again later.", 503);
     return true;
   }
-  // Double check: the phone's verdict arrives in a header. Both the phone and this server must pass the photo.
-  const phone = (res.req.get("x-phone-check") ?? "").slice(0, 60);
-  console.log(`photo check: server=${verdict} phone=${phone || "none"}`);
-  if (verdict === "ok") {
-    const phoneKind = phone.split(":")[0];
-    if (!PHOTO_MSG[phoneKind]) return false;
-    bad(res, PHOTO_MSG[phoneKind] + (phone.includes(":") ? ` (phone check ${phone.split(":")[1]})` : ""), 422);
-    return true;
-  }
+  if (verdict === "ok") return false;
   const [kind, score, limit] = verdict.split(":");
   // The score is shown so the limit can be tuned: lower score = more alike.
   const pct = (v) => Math.round(Number(v) * 100);

@@ -177,13 +177,18 @@ private suspend fun samePersonProblem(context: Context, jpeg: ByteArray, mainPho
 }
 
 /**
- * Reads the picked image, shrinks it, and runs the phone checks. It never blocks the photo: the verdict is remembered
- * and travels with the upload, so the server's check always runs too. For an extra photo, pass the main photo's address.
+ * Reads the picked image, shrinks it, and runs the phone checks.
+ * If the phone refuses the photo, the reason is shown and null is returned: nothing is uploaded and the server is not asked.
+ * If the phone accepts it, the caller uploads it and the server runs its own checks.
+ * For an extra photo, pass the main photo's address so the phone can also compare the two faces.
  */
 suspend fun readCheckedPhoto(context: Context, uri: Uri, main: Boolean, mainPhotoUrl: String? = null): ByteArray? {
     val jpeg = readJpeg(context, uri) ?: return null
-    val verdict = photoProblem(jpeg, main)
+    val problem = photoProblem(jpeg, main)
         ?: if (!main && mainPhotoUrl != null) samePersonProblem(context, jpeg, mainPhotoUrl) else null
-    PhoneCheck.set(jpeg, verdict ?: "ok")
+    if (problem != null) {
+        Toast.makeText(context, problem, Toast.LENGTH_LONG).show()
+        return null
+    }
     return jpeg
 }
