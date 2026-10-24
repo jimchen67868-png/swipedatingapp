@@ -350,6 +350,7 @@ api.get("/admin", (_req, res) => {
 <title>Reports</title><body style="font-family:sans-serif;margin:12px;max-width:640px">
 <h2>Reports</h2><input id="k" type="password" placeholder="Admin key" style="padding:8px">
 <button id="go" style="padding:8px">Load</button>
+<h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="tdel" style="padding:8px">Delete test users</button>
 <h3>Delete an account by phone</h3><input id="ph" placeholder="Phone number" style="padding:8px"><button id="del" style="padding:8px">Delete</button><div id="out"></div><script src="/admin.js"></script></body>`);
 });
 
@@ -395,6 +396,16 @@ async function load() {
   }
 }
 document.getElementById("go").onclick = load;
+async function testUsers(method) {
+  key = document.getElementById("k").value; sessionStorage.setItem("k", key);
+  try {
+    const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12 }) : undefined });
+    const b = await r.json();
+    alert(r.ok ? (b.added !== undefined ? "Added " + b.added : "Deleted " + b.deleted) : b.error);
+  } catch (e) { alert(e.message); }
+}
+document.getElementById("tadd").onclick = () => testUsers("POST");
+document.getElementById("tdel").onclick = () => testUsers("DELETE");
 document.getElementById("del").onclick = async () => {
   const phone = document.getElementById("ph").value.trim();
   if (!phone || !confirm("Permanently delete the account for " + phone + "?")) return;
@@ -447,6 +458,32 @@ api.post("/admin/users/:id/remove-photo", adminLimit, admin, wrap(async (req, re
   res.json({ ok: true });
 }));
 
+const TEST_NAMES = {
+  woman: ["Mia", "Emma", "Sofia", "Lily", "Nora", "Zoe", "Ava", "Chloe", "Grace", "Ella"],
+  man: ["Liam", "Noah", "Ethan", "Lucas", "Leo", "Max", "Adam", "Ryan", "Jack", "Ben"]
+};
+const TEST_CITIES = ["London", "Berlin", "Paris", "Madrid", "Rome", "Toronto", "Sydney", "Singapore"];
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// Fake people for testing. They like you back, answer chat messages, and only appear when SHOW_TEST_USERS=on.
+api.post("/admin/test-users", adminLimit, admin, wrap(async (req, res) => {
+  const count = Math.min(Math.max(Number(req.body?.count) || 12, 1), 40);
+  for (let i = 0; i < count; i++) {
+    const gender = i % 2 === 0 ? "woman" : "man";
+    const lookingFor = Math.floor(i / 2) % 2 === 0 ? "men" : "women"; // all four combinations, so everyone sees some
+    await pool.query(
+      "insert into users (phone, name, age, city, gender, looking_for, is_test) values ($1, $2, $3, $4, $5, $6, true)",
+      ["test-" + crypto.randomUUID(), pick(TEST_NAMES[gender]), 20 + Math.floor(Math.random() * 21), pick(TEST_CITIES), gender, lookingFor]
+    );
+  }
+  res.json({ added: count });
+}));
+
+api.delete("/admin/test-users", adminLimit, admin, wrap(async (_req, res) => {
+  const r = await pool.query("delete from users where is_test");
+  res.json({ deleted: r.rowCount });
+}));
+
 api.post("/admin/delete-phone", adminLimit, admin, wrap(async (req, res) => {
   const digits = String(req.body?.phone ?? "").replace(/\D/g, "");
   if (digits.length < 6) return bad(res, "Enter the full phone number.");
@@ -468,14 +505,14 @@ api.get("/deck", auth, needUser, wrap(async (req, res) => {
             (u.verified_at is not null) as verified,
             (select coalesce(json_agg(p.id order by p.id), '[]'::json) from photos p where p.user_id = u.id) as extra_photos
      from users u join users me on me.id = $1
-     where u.id <> me.id and u.photo is not null and u.gender is not null and u.looking_for in ('men', 'women')
+     where u.id <> me.id and (u.photo is not null or u.is_test) and (not u.is_test or $2::boolean) and u.gender is not null and u.looking_for in ('men', 'women')
        and u.gender = case me.looking_for when 'men' then 'man' else 'woman' end
        and me.gender = case u.looking_for when 'men' then 'man' else 'woman' end
        and not u.banned
        and not exists (select 1 from swipes s where s.from_id = me.id and s.to_id = u.id)
        and not exists (select 1 from blocks bl where (bl.blocker = me.id and bl.blocked = u.id) or (bl.blocker = u.id and bl.blocked = me.id))
      order by random() limit 20`,
-    [req.userId]
+    [req.userId, process.env.SHOW_TEST_USERS === "on"]
   );
   res.json(rows);
 }));
@@ -490,7 +527,8 @@ api.post("/swipe", auth, needUser, wrap(async (req, res) => {
     await client.query("begin");
     // Lock per pair so two people liking each other at the same moment still match.
     await client.query("select pg_advisory_xact_lock($1, $2)", [a, b]);
-    if (!(await client.query("select 1 from users where id = $1 and not banned", [target])).rowCount) {
+    const found = await client.query("select is_test from users where id = $1 and not banned", [target]);
+    if (!found.rowCount) {
       await client.query("rollback");
       return bad(res, "User not found.", 404);
     }
@@ -503,6 +541,13 @@ api.post("/swipe", auth, needUser, wrap(async (req, res) => {
        on conflict (from_id, to_id) do update set liked = excluded.liked`,
       [req.userId, target, liked]
     );
+    if (liked && found.rows[0].is_test) {
+      await client.query(
+        `insert into swipes (from_id, to_id, liked) values ($1, $2, true)
+         on conflict (from_id, to_id) do update set liked = true`,
+        [target, req.userId]
+      );
+    }
     let matchId = null;
     if (liked && (await client.query("select 1 from swipes where from_id = $1 and to_id = $2 and liked", [target, req.userId])).rowCount) {
       const ins = await client.query("insert into matches (a, b) values ($1, $2) on conflict (a, b) do nothing returning id", [a, b]);
@@ -549,6 +594,14 @@ api.post("/matches/:id/messages", auth, needUser, wrap(async (req, res) => {
   if (!body || body.length > 1000) return bad(res, "Message must be 1 to 1000 characters.");
   if (!(await isMember(matchId, req.userId))) return bad(res, "Not your match.", 403);
   await pool.query("insert into messages (match_id, sender, body) values ($1, $2, $3)", [matchId, req.userId, body]);
+  const m = await pool.query("select case when a = $2 then b else a end as other from matches where id = $1", [matchId, req.userId]);
+  const other = m.rows[0]?.other;
+  if (other && (await pool.query("select 1 from users where id = $1 and is_test", [other])).rowCount) {
+    const replies = ["Hey! Nice to meet you", "Haha, tell me more", "That sounds fun!", "What do you do for fun?", "Same here!", "Interesting, why?", "Want to meet up sometime?"];
+    setTimeout(() => {
+      pool.query("insert into messages (match_id, sender, body) values ($1, $2, $3)", [matchId, other, replies[Math.floor(Math.random() * replies.length)]]).catch(() => {});
+    }, 1500 + Math.random() * 2500);
+  }
   res.json({ ok: true });
 }));
 

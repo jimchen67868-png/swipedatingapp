@@ -64,6 +64,7 @@ create table if not exists banned_phones (hash text primary key);
 
 alter table users add column if not exists gender text check (gender in ('man', 'woman', 'other'));
 alter table users add column if not exists banned boolean not null default false;
+alter table users add column if not exists is_test boolean not null default false;
 alter table users add column if not exists verified_at timestamptz;
 alter table users add column if not exists id_verified_at timestamptz;
 alter table users add column if not exists photo bytea;
