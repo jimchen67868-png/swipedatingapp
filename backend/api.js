@@ -338,8 +338,8 @@ api.post("/block", auth, needUser, wrap(async (req, res) => {
 
 // ----- admin: a simple page at /admin to review reports. Needs the ADMIN_KEY env var. -----
 function admin(req, res, next) {
-  const want = Buffer.from(process.env.ADMIN_KEY ?? "");
-  const given = Buffer.from(req.get("x-admin-key") ?? "");
+  const want = Buffer.from((process.env.ADMIN_KEY ?? "").trim());
+  const given = Buffer.from((req.get("x-admin-key") ?? "").trim()); // phone keyboards often add a space
   if (!want.length || given.length !== want.length || !crypto.timingSafeEqual(given, want)) return bad(res, "Not allowed.", 403);
   next();
 }
