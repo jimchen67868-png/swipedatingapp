@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import com.example.swipe.data.ageFromBirthDate
 import com.example.swipe.data.readCheckedPhoto
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
@@ -30,18 +31,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.swipe.data.MyProfile
 
-private val genderOptions = listOf("man" to "Man", "woman" to "Woman")
-private val lookingOptions = listOf("men" to "Men", "women" to "Women")
+internal val genderOptions = listOf("man" to "Man", "woman" to "Woman")
+internal val lookingOptions = listOf("men" to "Men", "women" to "Women")
 
 @Composable
 fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean = false, serverError: String? = null) {
     var name by rememberSaveable { mutableStateOf("") }
-    var age by rememberSaveable { mutableStateOf("") }
+    var birthDate by rememberSaveable { mutableStateOf<String?>(null) }
     var city by rememberSaveable { mutableStateOf("") }
     var gender by rememberSaveable { mutableStateOf("") }
     var lookingFor by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var photo by remember { mutableStateOf<ByteArray?>(null) }
+    var cityReady by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -52,19 +54,19 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
     fun submit() {
         val n = name.trim()
         val c = city.trim()
-        val a = age.toIntOrNull()
+        val a = birthDate?.let { ageFromBirthDate(it) }
         error = when {
             n.isEmpty() -> "Please enter your name."
-            a == null -> "Please enter your age."
+            a == null -> "Please choose your birth date."
             a < 18 -> "You must be 18 or older to use this app."
             a > 99 -> "Please enter a valid age."
-            c.isEmpty() -> "Please enter your city."
+            !cityReady || c.isEmpty() -> "Please turn on location so we can fill in your city."
             gender.isEmpty() -> "Please choose your gender."
             lookingFor.isEmpty() -> "Please choose who you want to meet."
             photo == null -> "Please add a main photo. Only you, with your face clearly visible."
             else -> null
         }
-        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor), photo)
+        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor, birthDate = birthDate), photo)
     }
 
     Column(
@@ -100,23 +102,9 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = age,
-            onValueChange = { age = it.filter(Char::isDigit).take(2) },
-            label = { Text("Age") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
+        BirthDateField(birthDate = birthDate, onChange = { birthDate = it })
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = city,
-            onValueChange = { city = it.take(50) },
-            label = { Text("Location (city)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-            modifier = Modifier.fillMaxWidth()
-        )
+        CityField(city = city, onCity = { city = it }, required = true, onReady = { cityReady = it })
 
         Spacer(Modifier.height(20.dp))
         Text("I am", fontWeight = FontWeight.SemiBold)
@@ -137,7 +125,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
 }
 
 @Composable
-private fun ChipRow(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+internal fun ChipRow(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { (value, label) ->
             FilterChip(selected = selected == value, onClick = { onSelect(value) }, label = { Text(label) })

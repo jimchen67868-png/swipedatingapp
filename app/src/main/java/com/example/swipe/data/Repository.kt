@@ -7,7 +7,8 @@ import org.json.JSONObject
 
 private fun <T> JSONArray.mapObjects(f: (JSONObject) -> T): List<T> = List(length()) { f(getJSONObject(it)) }
 
-private fun JSONObject.toMe() = MyProfile(getString("name"), getInt("age"), getString("city"), getString("gender"), getString("lookingFor"), optBoolean("verified"), optBoolean("idVerified"), optBoolean("hasPhoto"))
+private fun JSONObject.toMe() = MyProfile(getString("name"), getInt("age"), getString("city"), getString("gender"), getString("lookingFor"), optBoolean("verified"), optBoolean("idVerified"), optBoolean("hasPhoto"),
+    if (isNull("birthDate") || optString("birthDate").isBlank()) null else optString("birthDate"))
 private fun JSONObject.toProfile() = Profile(
     getInt("id").toString(), getString("name"), getInt("age"), getString("city"),
     photoUrl = if (has("photo_v") && !isNull("photo_v")) "${BuildConfig.API_BASE_URL}/photo/${getInt("id")}?v=${getInt("photo_v")}" else null,
@@ -29,6 +30,7 @@ class Repository(private val api: Api) {
             "/me",
             JSONObject().put("name", p.name).put("age", p.age).put("city", p.city)
                 .put("gender", p.gender).put("lookingFor", p.lookingFor)
+                .apply { p.birthDate?.let { put("birthDate", it) } }
         )
             .mapCatching { JSONObject(it).toMe() }
 

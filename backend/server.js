@@ -3,7 +3,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import api from "./api.js";
-import { initDb } from "./db.js";
+import { initDb, pool } from "./db.js";
 
 const {
   BOT_TOKEN,     // from @BotFather
@@ -146,5 +146,12 @@ async function runBot() {
 
 app.use(api);
 await initDb();
+// Ages are worked out from birth dates; refresh them at start and every 6 hours so birthdays are picked up.
+const refreshAges = () =>
+  pool
+    .query("update users set age = date_part('year', age(birth_date))::int where birth_date is not null and age <> date_part('year', age(birth_date))::int")
+    .catch((e) => console.error("age refresh failed:", e.message));
+await refreshAges();
+setInterval(refreshAges, 6 * 60 * 60 * 1000);
 app.listen(PORT, () => console.log(`Auth backend listening on ${PORT}`));
 runBot();

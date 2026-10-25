@@ -54,6 +54,19 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Saves changes to the profile (name, age, city, gender, interested in). onDone runs when the server accepted them. */
+    fun update(p: MyProfile, onDone: () -> Unit) {
+        if (_state.value !is ProfileState.Ready) return
+        _saving.value = true
+        _saveError.value = null
+        viewModelScope.launch {
+            repo.saveMe(p)
+                .onSuccess { me -> _state.value = ProfileState.Ready(me); onDone() }
+                .onFailure { e -> _saveError.value = e.message ?: "Network error" }
+            _saving.value = false
+        }
+    }
+
     /** Used when the profile exists but the main photo is missing or was refused. */
     fun uploadPhoto(jpeg: ByteArray) {
         val ready = _state.value as? ProfileState.Ready ?: return

@@ -20,7 +20,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 @Composable
-fun AppNav(onLogout: () -> Unit, me: MyProfile? = null, initialVerified: Boolean = false, initialIdVerified: Boolean = false, vm: AppViewModel = viewModel()) {
+fun AppNav(onLogout: () -> Unit, me: MyProfile? = null, profileSaving: Boolean = false, profileError: String? = null, onSaveProfile: (MyProfile, () -> Unit) -> Unit = { _, _ -> }, initialVerified: Boolean = false, initialIdVerified: Boolean = false, vm: AppViewModel = viewModel()) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val deck by vm.deck.collectAsStateWithLifecycle()
@@ -95,7 +95,16 @@ fun AppNav(onLogout: () -> Unit, me: MyProfile? = null, initialVerified: Boolean
                     }.joinToString(" - ")
                     ProfileScreen(
                         profile = mine, onBack = null, onReport = null,
-                        onEdit = { nav.navigate("photos") }, subtitle = details
+                        onEdit = { nav.navigate("photos") }, onEditProfile = { nav.navigate("editprofile") }, subtitle = details
+                    )
+                }
+            }
+            composable("editprofile") {
+                if (me != null) {
+                    EditProfileScreen(
+                        me = me, saving = profileSaving, serverError = profileError,
+                        onSave = { p -> onSaveProfile(p) { nav.popBackStack() } },
+                        onBack = { nav.popBackStack() }
                     )
                 }
             }

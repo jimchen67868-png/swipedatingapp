@@ -39,7 +39,7 @@ async function isMember(matchId, userId) {
 // ----- my profile -----
 api.get("/me", auth, wrap(async (req, res) => {
   const { rows } = await pool.query(
-    `select id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto" from users
+    `select id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate" from users
      where phone = $1 and gender is not null and looking_for in ('men', 'women')`,
     [req.phone]
   );
@@ -80,9 +80,18 @@ const LOOKING = ["men", "women"];
 api.put("/me", auth, wrap(async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   const city = String(req.body?.city ?? "").trim();
-  const age = Number(req.body?.age);
+  let age = Number(req.body?.age);
   const gender = req.body?.gender;
   const lookingFor = req.body?.lookingFor;
+  // The app sends a birth date; the age is worked out from it here, so it can't be typed wrongly.
+  const birthDate = req.body?.birthDate == null ? null : String(req.body.birthDate);
+  if (birthDate !== null) {
+    const d = new Date(birthDate + "T00:00:00Z");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== birthDate) {
+      return bad(res, "Please enter a valid birth date.");
+    }
+    age = ageOn(birthDate);
+  }
   if (!name || name.length > 30) return bad(res, "Name must be 1 to 30 characters.");
   if (!Number.isInteger(age) || age < 18 || age > 99) return bad(res, "You must be 18 or older.");
   if (!city || city.length > 50) return bad(res, "City must be 1 to 50 characters.");
@@ -91,12 +100,29 @@ api.put("/me", auth, wrap(async (req, res) => {
   if ((await pool.query("select 1 from banned_phones where hash = $1", [phoneHash(req.phone)])).rowCount) {
     return bad(res, "Your account has been suspended.", 403);
   }
+  // Once the ID is verified, the birth date (and so the age) can no longer be changed.
+  const current = await pool.query(
+    "select age, to_char(birth_date, 'YYYY-MM-DD') as bd, id_verified_at is not null as locked from users where phone = $1",
+    [req.phone]
+  );
+  const cur = current.rows[0];
+  const lockedMsg = "Your birth date can't be changed because it was confirmed with your ID.";
+  let birthToStore = birthDate;
+  if (cur?.locked) {
+    if (cur.bd) {
+      if (birthDate !== null ? birthDate !== cur.bd : age !== cur.age) return bad(res, lockedMsg, 403);
+      birthToStore = cur.bd;
+    } else {
+      if (age !== cur.age) return bad(res, lockedMsg, 403);
+      birthToStore = null;
+    }
+  }
   const { rows } = await pool.query(
-    `insert into users (phone, name, age, city, gender, looking_for) values ($1, $2, $3, $4, $5, $6)
+    `insert into users (phone, name, age, city, gender, looking_for, birth_date) values ($1, $2, $3, $4, $5, $6, $7)
      on conflict (phone) do update set name = excluded.name, age = excluded.age, city = excluded.city,
-       gender = excluded.gender, looking_for = excluded.looking_for
-     returning id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto"`,
-    [req.phone, name, age, city, gender, lookingFor]
+       gender = excluded.gender, looking_for = excluded.looking_for, birth_date = coalesce(excluded.birth_date, users.birth_date)
+     returning id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate"`,
+    [req.phone, name, age, city, gender, lookingFor, birthToStore]
   );
   res.json(rows[0]);
 }));
@@ -260,10 +286,27 @@ api.post("/me/verify-id", auth, needUser, idLimit, express.json({ limit: "3mb" }
   if (!ages.length) return bad(res, "We couldn't read the birth date on your ID.");
   if (ages.every((a) => a < 18)) return bad(res, "You must be 18 or older to use this app.", 403);
 
-  const { rows } = await pool.query("select photo, age from users where id = $1", [req.userId]);
+  const { rows } = await pool.query("select photo, age, to_char(birth_date, 'YYYY-MM-DD') as bd from users where id = $1", [req.userId]);
   if (!rows[0]?.photo) return bad(res, "Add a profile photo first, then verify.");
-  if (!ages.some((a) => a >= 18 && Math.abs(a - rows[0].age) <= 1)) {
-    return bad(res, "The birth date on your ID doesn't match the age on your profile.", 422);
+  let idAge;
+  let idDob;
+  if (rows[0].bd) {
+    // The profile has a birth date, so the ID must show exactly the same date.
+    if (!dob.includes(rows[0].bd)) {
+      return bad(res, `The birth date on your ID doesn't match the birth date on your profile (${rows[0].bd}).`, 422);
+    }
+    idDob = rows[0].bd;
+    idAge = ageOn(idDob);
+    if (idAge < 18) return bad(res, "You must be 18 or older to use this app.", 403);
+  } else {
+    // Older profiles have only an age. ID_AGE_TOLERANCE=0 makes it exact; the default allows one year.
+    const tolerance = Number.isFinite(Number(process.env.ID_AGE_TOLERANCE)) && process.env.ID_AGE_TOLERANCE !== undefined ? Number(process.env.ID_AGE_TOLERANCE) : 1;
+    const idAges = [...new Set(ages.filter((a) => a >= 18))].sort((x, y) => Math.abs(x - rows[0].age) - Math.abs(y - rows[0].age));
+    idAge = idAges[0]; // the reading closest to the profile age (day and month can be read two ways)
+    if (idAge === undefined || Math.abs(idAge - rows[0].age) > tolerance) {
+      return bad(res, `The age on your ID (${idAges.join(" or ")}) doesn't match the age on your profile (${rows[0].age}).`, 422);
+    }
+    idDob = dob.find((d) => ageOn(d) === idAge);
   }
 
   let r, limits;
@@ -289,7 +332,11 @@ api.post("/me/verify-id", auth, needUser, idLimit, express.json({ limit: "3mb" }
   }
   console.log(`id check: selfie-profile ${prof.distance.toFixed(2)}, selfie-id ${id.distance.toFixed(2)}, id-profile ${r.cross === null ? "n/a" : r.cross.toFixed(2)}`);
 
-  await pool.query("update users set verified_at = now(), id_verified_at = now() where id = $1", [req.userId]);
+  // The ID is the truth: keep the profile age in step with it.
+  await pool.query(
+    "update users set verified_at = now(), id_verified_at = now(), age = $2, birth_date = coalesce(birth_date, $3::date) where id = $1",
+    [req.userId, idAge, idDob ?? null]
+  );
   res.json({ verified: true, idVerified: true });
 }));
 

@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
                         ProfileState.Loading -> LoadingScreen()
                         ProfileState.Missing -> ProfileSetupScreen(onSave = profileVm::save, saving = saving, serverError = saveError)
                         is ProfileState.Ready ->
-                            if (s.me.hasPhoto) AppNav(onLogout = logout, me = s.me, initialVerified = s.me.verified, initialIdVerified = s.me.idVerified)
+                            if (s.me.hasPhoto) AppNav(onLogout = logout, me = s.me, profileSaving = saving, profileError = saveError, onSaveProfile = profileVm::update, initialVerified = s.me.verified, initialIdVerified = s.me.idVerified)
                             else AddPhotoScreen(onPhoto = profileVm::uploadPhoto, saving = saving, serverError = saveError, onLogout = logout)
                         is ProfileState.Failed -> ErrorScreen(s.message, onRetry = profileVm::load, onLogout = logout)
                     }

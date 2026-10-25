@@ -10,7 +10,8 @@ data class MyProfile(
     val lookingFor: String,   // men | women
     val verified: Boolean = false,
     val idVerified: Boolean = false,
-    val hasPhoto: Boolean = false
+    val hasPhoto: Boolean = false,
+    val birthDate: String? = null // yyyy-mm-dd; the age is worked out from it
 )
 
 private val palette = listOf(

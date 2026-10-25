@@ -35,6 +35,7 @@ fun ProfileScreen(
     onLike: (() -> Unit)? = null,
     onPass: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
+    onEditProfile: (() -> Unit)? = null,
     subtitle: String? = null
 ) {
     val photos = profile.photos
@@ -42,6 +43,7 @@ fun ProfileScreen(
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
             Spacer(Modifier.weight(1f))
+            if (onEditProfile != null) TextButton(onClick = onEditProfile) { Text("Edit profile") }
             if (onEdit != null) TextButton(onClick = onEdit) { Text("Edit photos") }
             if (onReport != null) TextButton(onClick = onReport) { Text("Report") }
         }
