@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.swipe.data.MyProfile
+import kotlin.math.roundToInt
 import com.example.swipe.data.ageFromBirthDate
 
 /** Change name, age, city, gender and who you are interested in. The age is locked once it was confirmed with an ID. */
@@ -34,7 +35,8 @@ fun EditProfileScreen(
     var city by rememberSaveable { mutableStateOf(me.city) }
     var gender by rememberSaveable { mutableStateOf(me.gender) }
     var lookingFor by rememberSaveable { mutableStateOf(me.lookingFor) }
-    var maxKm by rememberSaveable { mutableStateOf(me.maxDistanceKm?.toString() ?: "any") }
+    // 1 to 100 km on the slider; the very end (101) means "Anywhere".
+    var distance by rememberSaveable { mutableStateOf(me.maxDistanceKm?.coerceIn(1, 100)?.toFloat() ?: 101f) }
     var error by remember { mutableStateOf<String?>(null) }
     var coords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
@@ -49,7 +51,7 @@ fun EditProfileScreen(
             c.isEmpty() -> "Please enter your city."
             else -> null
         }
-        if (error == null) onSave(me.copy(name = n, age = a, city = c, gender = gender, lookingFor = lookingFor, birthDate = birthDate, maxDistanceKm = maxKm.toIntOrNull(), lat = coords?.first, lon = coords?.second))
+        if (error == null) onSave(me.copy(name = n, age = a, city = c, gender = gender, lookingFor = lookingFor, birthDate = birthDate, maxDistanceKm = distance.roundToInt().let { if (it >= 101) null else it }, lat = coords?.first, lon = coords?.second))
     }
 
     Column(
@@ -81,11 +83,16 @@ fun EditProfileScreen(
         Spacer(Modifier.height(8.dp))
         ChipRow(lookingOptions, lookingFor) { lookingFor = it }
         Spacer(Modifier.height(16.dp))
-        Text("Show people within", fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        ChipRow(listOf("5" to "5 km", "10" to "10 km", "25" to "25 km"), maxKm) { maxKm = it }
-        Spacer(Modifier.height(8.dp))
-        ChipRow(listOf("50" to "50 km", "100" to "100 km", "any" to "Anywhere"), maxKm) { maxKm = it }
+        val km = distance.roundToInt()
+        Text(
+            if (km >= 101) "Show people within: Anywhere" else "Show people within: $km km",
+            fontWeight = FontWeight.SemiBold
+        )
+        Slider(value = distance, onValueChange = { distance = it }, valueRange = 1f..101f)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("1 km", color = Ink.copy(alpha = 0.6f), fontSize = 12.sp)
+            Text("Anywhere", color = Ink.copy(alpha = 0.6f), fontSize = 12.sp)
+        }
         Text(
             "Uses your saved location. People who haven't saved a location are hidden while a distance is set.",
             color = Ink.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
