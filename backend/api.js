@@ -77,24 +77,49 @@ api.get("/delete-account", (_req, res) => {
 const GENDERS = ["man", "woman"];
 const LOOKING = ["men", "women"];
 
-// Turns coordinates into "City, Country" with OpenStreetMap's free Nominatim service (max 1 request a second, so it is only used when saving a profile).
-async function lookupPlace(lat, lon) {
-  const base = process.env.GEOCODE_URL ?? "https://nominatim.openstreetmap.org/reverse";
-  try {
-    const r = await fetch(`${base}?format=jsonv2&zoom=10&addressdetails=1&accept-language=en&lat=${lat}&lon=${lon}`, {
-      headers: { "User-Agent": "SwipeDatingApp/1.0 (+https://swipedatingapp.onrender.com)" },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!r.ok) return null;
-    const a = (await r.json()).address;
-    if (!a) return null;
-    const place = a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state;
-    if (!place && !a.country) return null;
-    return [place, a.country].filter(Boolean).join(", ").slice(0, 50);
-  } catch (e) {
-    console.error("geocode failed:", e.message);
-    return null;
+// Turns coordinates into "City, Country". Tries OpenStreetMap's Nominatim first, then Photon (also OpenStreetMap data), because one
+// free service can refuse requests from shared hosting. Failures are written to the log with the reason.
+const GEOCODERS = [
+  {
+    name: "nominatim",
+    url: (lat, lon) => `${process.env.GEOCODE_URL ?? "https://nominatim.openstreetmap.org/reverse"}?format=jsonv2&zoom=10&addressdetails=1&accept-language=en&lat=${lat}&lon=${lon}`,
+    parse: (j) => {
+      const a = j?.address;
+      return a ? [a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state, a.country] : null;
+    }
+  },
+  {
+    name: "photon",
+    url: (lat, lon) => `https://photon.komoot.io/reverse?lang=en&lat=${lat}&lon=${lon}`,
+    parse: (j) => {
+      const p = j?.features?.[0]?.properties;
+      return p ? [p.city ?? p.town ?? p.village ?? p.county ?? p.state ?? p.name, p.country] : null;
+    }
   }
+];
+
+async function lookupPlace(lat, lon) {
+  for (const g of GEOCODERS) {
+    try {
+      const r = await fetch(g.url(lat, lon), {
+        headers: { "User-Agent": "SwipeDatingApp/1.0 (+https://swipedatingapp.onrender.com)", Accept: "application/json" },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!r.ok) {
+        console.error(`geocode ${g.name}: HTTP ${r.status}`);
+        continue;
+      }
+      const [place, country] = g.parse(await r.json()) ?? [];
+      if (!place && !country) {
+        console.error(`geocode ${g.name}: no place found for ${lat},${lon}`);
+        continue;
+      }
+      return [place, country].filter(Boolean).join(", ").slice(0, 50);
+    } catch (e) {
+      console.error(`geocode ${g.name} failed: ${e.message}`);
+    }
+  }
+  return null;
 }
 
 api.put("/me", auth, wrap(async (req, res) => {
