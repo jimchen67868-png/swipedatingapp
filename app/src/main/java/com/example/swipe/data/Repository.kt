@@ -33,6 +33,7 @@ class Repository(private val api: Api) {
             JSONObject().put("name", p.name).put("age", p.age).put("city", p.city)
                 .put("gender", p.gender).put("lookingFor", p.lookingFor)
                 .put("maxDistanceKm", p.maxDistanceKm ?: JSONObject.NULL)
+                .put("lang", java.util.Locale.getDefault().toLanguageTag())
                 .apply {
                     p.birthDate?.let { put("birthDate", it) }
                     if (p.lat != null && p.lon != null) put("lat", p.lat).put("lon", p.lon)

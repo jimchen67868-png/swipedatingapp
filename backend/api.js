@@ -77,31 +77,34 @@ api.get("/delete-account", (_req, res) => {
 const GENDERS = ["man", "woman"];
 const LOOKING = ["men", "women"];
 
-// Turns coordinates into "City, Country". Tries OpenStreetMap's Nominatim first, then Photon (also OpenStreetMap data), because one
-// free service can refuse requests from shared hosting. Failures are written to the log with the reason.
+// Turns coordinates into a place. Tries OpenStreetMap's Nominatim first, then Photon (also OpenStreetMap data), because one free
+// service can refuse requests from shared hosting. Failures are written to the log with the reason.
+// Returns { name: "City, Country", parts: [every place name found for the spot] }.
+const strings = (o) => Object.values(o ?? {}).filter((v) => typeof v === "string");
 const GEOCODERS = [
   {
     name: "nominatim",
-    url: (lat, lon) => `${process.env.GEOCODE_URL ?? "https://nominatim.openstreetmap.org/reverse"}?format=jsonv2&zoom=10&addressdetails=1&accept-language=en&lat=${lat}&lon=${lon}`,
+    url: (lat, lon, lang) => `${process.env.GEOCODE_URL ?? "https://nominatim.openstreetmap.org/reverse"}?format=jsonv2&zoom=10&addressdetails=1&accept-language=${lang}&lat=${lat}&lon=${lon}`,
     parse: (j) => {
       const a = j?.address;
-      return a ? [a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state, a.country] : null;
+      return a ? { place: a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state, country: a.country, parts: [...strings(a), ...String(j.display_name ?? "").split(", ")] } : null;
     }
   },
   {
     name: "photon",
-    url: (lat, lon) => `https://photon.komoot.io/reverse?lang=en&lat=${lat}&lon=${lon}`,
+    url: (lat, lon, lang) => `https://photon.komoot.io/reverse?lang=${["en", "de", "fr", "it"].includes(lang.slice(0, 2)) ? lang.slice(0, 2) : "en"}&lat=${lat}&lon=${lon}`,
     parse: (j) => {
       const p = j?.features?.[0]?.properties;
-      return p ? [p.city ?? p.town ?? p.village ?? p.county ?? p.state ?? p.name, p.country] : null;
+      return p ? { place: p.city ?? p.town ?? p.village ?? p.county ?? p.state ?? p.name, country: p.country, parts: strings(p) } : null;
     }
   }
 ];
 
-async function lookupPlace(lat, lon) {
+async function lookupPlace(lat, lon, lang = "") {
+  const language = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(lang) ? lang : "en";
   for (const g of GEOCODERS) {
     try {
-      const r = await fetch(g.url(lat, lon), {
+      const r = await fetch(g.url(lat, lon, language), {
         headers: { "User-Agent": "SwipeDatingApp/1.0 (+https://swipedatingapp.onrender.com)", Accept: "application/json" },
         signal: AbortSignal.timeout(8000)
       });
@@ -109,17 +112,29 @@ async function lookupPlace(lat, lon) {
         console.error(`geocode ${g.name}: HTTP ${r.status}`);
         continue;
       }
-      const [place, country] = g.parse(await r.json()) ?? [];
-      if (!place && !country) {
+      const f = g.parse(await r.json());
+      if (!f || (!f.place && !f.country)) {
         console.error(`geocode ${g.name}: no place found for ${lat},${lon}`);
         continue;
       }
-      return [place, country].filter(Boolean).join(", ").slice(0, 50);
+      return { name: [f.place, f.country].filter(Boolean).join(", ").slice(0, 50), parts: f.parts };
     } catch (e) {
       console.error(`geocode ${g.name} failed: ${e.message}`);
     }
   }
   return null;
+}
+
+// The phone names the place itself (for example in the person's own language). That name is used only if it really is a
+// place at these coordinates, meaning every part of it appears in what the lookup found. Otherwise the lookup's own name is used.
+const plain = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+function acceptPhoneName(phoneName, found) {
+  if (typeof phoneName !== "string") return null;
+  const bits = phoneName.split(",").map(plain).filter(Boolean);
+  if (bits.length === 0 || bits.length > 2) return null;
+  const known = found.parts.map(plain).filter(Boolean);
+  const same = (a, b) => a === b || (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a)));
+  return bits.every((b) => known.some((k) => same(k, b))) ? phoneName.trim().slice(0, 50) : null;
 }
 
 api.put("/me", auth, wrap(async (req, res) => {
@@ -172,8 +187,9 @@ api.put("/me", auth, wrap(async (req, res) => {
     lat = Number(req.body.lat);
     lon = Number(req.body.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return bad(res, "Invalid location.");
-    place = await lookupPlace(lat, lon);
-    if (!place) return bad(res, "We couldn't look up your location. Please try again.", 503);
+    const found = await lookupPlace(lat, lon, String(req.body.lang ?? ""));
+    if (!found) return bad(res, "We couldn't look up your location. Please try again.", 503);
+    place = acceptPhoneName(req.body.city, found) ?? found.name;
     lat = Math.round(lat * 100) / 100; // about 1 km: enough for distance later, not exact enough to find a home
     lon = Math.round(lon * 100) / 100;
   } else if (!cur) {
@@ -659,7 +675,7 @@ api.post("/admin/test-users", adminLimit, admin, wrap(async (req, res) => {
   const nearLat = Number(req.body?.lat);
   const nearLon = Number(req.body?.lon);
   const near = req.body?.lat != null && Number.isFinite(nearLat) && Number.isFinite(nearLon);
-  const nearName = near ? ((await lookupPlace(nearLat, nearLon)) ?? "Nearby") : null;
+  const nearName = near ? ((await lookupPlace(nearLat, nearLon))?.name ?? "Nearby") : null;
   for (let i = 0; i < count; i++) {
     const gender = i % 2 === 0 ? "woman" : "man";
     const lookingFor = Math.floor(i / 2) % 2 === 0 ? "men" : "women"; // all four combinations, so everyone sees some
