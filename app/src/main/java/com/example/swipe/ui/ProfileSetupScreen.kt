@@ -44,6 +44,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
     var error by remember { mutableStateOf<String?>(null) }
     var photo by remember { mutableStateOf<ByteArray?>(null) }
     var cityReady by remember { mutableStateOf(false) }
+    var coords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -66,7 +67,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
             photo == null -> "Please add a main photo. Only you, with your face clearly visible."
             else -> null
         }
-        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor, birthDate = birthDate), photo)
+        if (error == null) onSave(MyProfile(n, a!!, c, gender, lookingFor, birthDate = birthDate, lat = coords?.first, lon = coords?.second), photo)
     }
 
     Column(
@@ -104,7 +105,7 @@ fun ProfileSetupScreen(onSave: (MyProfile, ByteArray?) -> Unit, saving: Boolean 
         Spacer(Modifier.height(12.dp))
         BirthDateField(birthDate = birthDate, onChange = { birthDate = it })
         Spacer(Modifier.height(12.dp))
-        CityField(city = city, onCity = { city = it }, required = true, onReady = { cityReady = it })
+        CityField(city = city, onCity = { city = it }, onCoords = { la, lo -> coords = la to lo }, required = true, onReady = { cityReady = it })
 
         Spacer(Modifier.height(20.dp))
         Text("I am", fontWeight = FontWeight.SemiBold)

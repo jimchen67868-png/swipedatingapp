@@ -11,7 +11,10 @@ data class MyProfile(
     val verified: Boolean = false,
     val idVerified: Boolean = false,
     val hasPhoto: Boolean = false,
-    val birthDate: String? = null // yyyy-mm-dd; the age is worked out from it
+    val birthDate: String? = null, // yyyy-mm-dd; the age is worked out from it
+    val maxDistanceKm: Int? = null, // null = anywhere
+    val lat: Double? = null,       // sent to the server when the location was refreshed; the server works out the place from these
+    val lon: Double? = null
 )
 
 private val palette = listOf(
@@ -26,7 +29,8 @@ data class Profile(
     val city: String,
     val photoUrl: String? = null,
     val verified: Boolean = false,
-    val extraPhotos: List<String> = emptyList()
+    val extraPhotos: List<String> = emptyList(),
+    val distanceKm: Int? = null
 ) {
     /** Main photo first, then the extra photos. */
     val photos: List<String> get() = listOfNotNull(photoUrl) + extraPhotos
@@ -39,3 +43,11 @@ data class MyPhotos(val main: String?, val extras: List<PhotoSlot>)
 data class MatchItem(val matchId: Long, val profile: Profile, val lastMessage: String?)
 
 data class Message(val id: Long, val fromMe: Boolean, val text: String)
+
+/** "5 km away", "Less than 1 km away" or "100+ km away" (never an exact far distance), or null if unknown. */
+fun distanceText(km: Int?): String? = when {
+    km == null -> null
+    km <= 0 -> "Less than 1 km away"
+    km < 100 -> "$km km away"
+    else -> "100+ km away"
+}

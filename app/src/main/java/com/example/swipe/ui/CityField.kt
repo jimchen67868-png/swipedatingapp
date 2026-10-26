@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import com.example.swipe.data.findCity
+import com.example.swipe.data.findPlace
 import com.example.swipe.data.hasLocationPermission
 import com.example.swipe.data.locationSwitchOn
 
@@ -25,12 +25,13 @@ import com.example.swipe.data.locationSwitchOn
  * onReady(true) tells the screen the city is good to save.
  */
 @Composable
-fun CityField(city: String, onCity: (String) -> Unit, required: Boolean, onReady: (Boolean) -> Unit) {
+fun CityField(city: String, onCity: (String) -> Unit, onCoords: (Double, Double) -> Unit, required: Boolean, onReady: (Boolean) -> Unit) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasLocationPermission(context)) }
     var switchOn by remember { mutableStateOf(locationSwitchOn(context)) }
     var finding by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var hasCoords by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
     var asked by remember { mutableStateOf(false) }
 
@@ -44,8 +45,12 @@ fun CityField(city: String, onCity: (String) -> Unit, required: Boolean, onReady
         if (granted && switchOn && (required || attempt > 0 || city.isBlank())) {
             finding = true
             failed = false
-            val found = findCity(context)
-            if (found != null) onCity(found) else failed = true
+            val found = findPlace(context)
+            if (found != null) {
+                onCoords(found.lat, found.lon)
+                onCity(found.name ?: "Location found")
+                hasCoords = true
+            } else failed = true
             finding = false
         } else if (!granted && required && !asked) {
             asked = true
@@ -53,30 +58,28 @@ fun CityField(city: String, onCity: (String) -> Unit, required: Boolean, onReady
         }
     }
 
-    val canType = !required || (granted && switchOn && failed)
-    LaunchedEffect(granted, switchOn, city, required, finding) {
-        onReady(!required || (granted && switchOn && !finding && city.isNotBlank()))
+    LaunchedEffect(granted, switchOn, hasCoords, required, finding) {
+        onReady(!required || (granted && switchOn && !finding && hasCoords))
     }
 
+    // The location can never be typed: it only ever comes from the phone's location.
     OutlinedTextField(
         value = city,
-        onValueChange = { if (canType) onCity(it.take(50)) },
-        label = { Text("Location (city)") },
+        onValueChange = {},
+        readOnly = true,
+        label = { Text("Location (city, country)") },
         singleLine = true,
-        enabled = canType,
         supportingText = {
             Text(
                 when {
-                    finding -> "Finding your city..."
-                    required && !granted -> "Location is required. Tap Allow location."
-                    required && !switchOn -> "Turn on location in your phone settings, then tap Try again."
-                    required && failed -> "We couldn't work out your city. Type it in."
-                    required -> "Filled in from your location."
-                    else -> "Type a city, or use your location."
+                    finding -> "Finding your location..."
+                    !granted -> if (required) "Location is required. Tap Allow location." else "Tap Use my location. It can't be typed."
+                    !switchOn -> "Turn on location in your phone settings, then tap Try again."
+                    failed -> "We couldn't work out your location. Check your internet, then tap Use my location again."
+                    else -> "Filled in from your phone's location. It can't be typed."
                 }
             )
         },
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
         modifier = Modifier.fillMaxWidth()
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

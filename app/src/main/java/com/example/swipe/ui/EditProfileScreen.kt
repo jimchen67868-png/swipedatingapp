@@ -34,7 +34,9 @@ fun EditProfileScreen(
     var city by rememberSaveable { mutableStateOf(me.city) }
     var gender by rememberSaveable { mutableStateOf(me.gender) }
     var lookingFor by rememberSaveable { mutableStateOf(me.lookingFor) }
+    var maxKm by rememberSaveable { mutableStateOf(me.maxDistanceKm?.toString() ?: "any") }
     var error by remember { mutableStateOf<String?>(null) }
+    var coords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     fun submit() {
         val n = name.trim()
@@ -47,7 +49,7 @@ fun EditProfileScreen(
             c.isEmpty() -> "Please enter your city."
             else -> null
         }
-        if (error == null) onSave(me.copy(name = n, age = a, city = c, gender = gender, lookingFor = lookingFor, birthDate = birthDate))
+        if (error == null) onSave(me.copy(name = n, age = a, city = c, gender = gender, lookingFor = lookingFor, birthDate = birthDate, maxDistanceKm = maxKm.toIntOrNull(), lat = coords?.first, lon = coords?.second))
     }
 
     Column(
@@ -69,7 +71,7 @@ fun EditProfileScreen(
             lockedNote = if (me.idVerified) "Locked: your birth date was confirmed with your ID." else null
         )
         Spacer(Modifier.height(12.dp))
-        CityField(city = city, onCity = { city = it }, required = false, onReady = {})
+        CityField(city = city, onCity = { city = it }, onCoords = { la, lo -> coords = la to lo }, required = false, onReady = {})
         Spacer(Modifier.height(20.dp))
         Text("I am", fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
@@ -78,6 +80,16 @@ fun EditProfileScreen(
         Text("Interested in", fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         ChipRow(lookingOptions, lookingFor) { lookingFor = it }
+        Spacer(Modifier.height(16.dp))
+        Text("Show people within", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        ChipRow(listOf("5" to "5 km", "10" to "10 km", "25" to "25 km"), maxKm) { maxKm = it }
+        Spacer(Modifier.height(8.dp))
+        ChipRow(listOf("50" to "50 km", "100" to "100 km", "any" to "Anywhere"), maxKm) { maxKm = it }
+        Text(
+            "Uses your saved location. People who haven't saved a location are hidden while a distance is set.",
+            color = Ink.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
+        )
         (error ?: serverError)?.let { Text(it, color = NopeRed, modifier = Modifier.padding(top = 12.dp)) }
         Spacer(Modifier.height(20.dp))
         Button(onClick = ::submit, enabled = !saving, modifier = Modifier.fillMaxWidth().height(52.dp)) {

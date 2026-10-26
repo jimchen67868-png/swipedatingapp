@@ -103,7 +103,7 @@ fun AppNav(onLogout: () -> Unit, me: MyProfile? = null, profileSaving: Boolean =
                 if (me != null) {
                     EditProfileScreen(
                         me = me, saving = profileSaving, serverError = profileError,
-                        onSave = { p -> onSaveProfile(p) { nav.popBackStack() } },
+                        onSave = { p -> onSaveProfile(p) { vm.reloadDeck(); nav.popBackStack() } },
                         onBack = { nav.popBackStack() }
                     )
                 }

@@ -39,7 +39,7 @@ async function isMember(matchId, userId) {
 // ----- my profile -----
 api.get("/me", auth, wrap(async (req, res) => {
   const { rows } = await pool.query(
-    `select id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate" from users
+    `select id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate", max_distance_km as "maxDistanceKm" from users
      where phone = $1 and gender is not null and looking_for in ('men', 'women')`,
     [req.phone]
   );
@@ -77,12 +77,34 @@ api.get("/delete-account", (_req, res) => {
 const GENDERS = ["man", "woman"];
 const LOOKING = ["men", "women"];
 
+// Turns coordinates into "City, Country" with OpenStreetMap's free Nominatim service (max 1 request a second, so it is only used when saving a profile).
+async function lookupPlace(lat, lon) {
+  const base = process.env.GEOCODE_URL ?? "https://nominatim.openstreetmap.org/reverse";
+  try {
+    const r = await fetch(`${base}?format=jsonv2&zoom=10&addressdetails=1&accept-language=en&lat=${lat}&lon=${lon}`, {
+      headers: { "User-Agent": "SwipeDatingApp/1.0 (+https://swipedatingapp.onrender.com)" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) return null;
+    const a = (await r.json()).address;
+    if (!a) return null;
+    const place = a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? a.state;
+    if (!place && !a.country) return null;
+    return [place, a.country].filter(Boolean).join(", ").slice(0, 50);
+  } catch (e) {
+    console.error("geocode failed:", e.message);
+    return null;
+  }
+}
+
 api.put("/me", auth, wrap(async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
-  const city = String(req.body?.city ?? "").trim();
   let age = Number(req.body?.age);
   const gender = req.body?.gender;
   const lookingFor = req.body?.lookingFor;
+  const hasMax = req.body !== null && typeof req.body === "object" && "maxDistanceKm" in req.body;
+  const maxKm = hasMax && req.body.maxDistanceKm !== null ? Number(req.body.maxDistanceKm) : null;
+  if (hasMax && maxKm !== null && (!Number.isInteger(maxKm) || maxKm < 1 || maxKm > 20000)) return bad(res, "Invalid maximum distance.");
   // The app sends a birth date; the age is worked out from it here, so it can't be typed wrongly.
   const birthDate = req.body?.birthDate == null ? null : String(req.body.birthDate);
   if (birthDate !== null) {
@@ -94,7 +116,6 @@ api.put("/me", auth, wrap(async (req, res) => {
   }
   if (!name || name.length > 30) return bad(res, "Name must be 1 to 30 characters.");
   if (!Number.isInteger(age) || age < 18 || age > 99) return bad(res, "You must be 18 or older.");
-  if (!city || city.length > 50) return bad(res, "City must be 1 to 50 characters.");
   if (!GENDERS.includes(gender)) return bad(res, "Please choose your gender.");
   if (!LOOKING.includes(lookingFor)) return bad(res, "Please choose who you want to meet.");
   if ((await pool.query("select 1 from banned_phones where hash = $1", [phoneHash(req.phone)])).rowCount) {
@@ -117,12 +138,30 @@ api.put("/me", auth, wrap(async (req, res) => {
       birthToStore = null;
     }
   }
+  // The location is never taken from typed text: the app sends coordinates and the server looks the place up itself.
+  // Without coordinates an existing profile keeps its current place, and a new profile can't be created.
+  let place = null;
+  let lat = null;
+  let lon = null;
+  if (req.body?.lat != null || req.body?.lon != null) {
+    lat = Number(req.body.lat);
+    lon = Number(req.body.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return bad(res, "Invalid location.");
+    place = await lookupPlace(lat, lon);
+    if (!place) return bad(res, "We couldn't look up your location. Please try again.", 503);
+    lat = Math.round(lat * 100) / 100; // about 1 km: enough for distance later, not exact enough to find a home
+    lon = Math.round(lon * 100) / 100;
+  } else if (!cur) {
+    return bad(res, "Turn on location to create your profile.");
+  }
   const { rows } = await pool.query(
-    `insert into users (phone, name, age, city, gender, looking_for, birth_date) values ($1, $2, $3, $4, $5, $6, $7)
-     on conflict (phone) do update set name = excluded.name, age = excluded.age, city = excluded.city,
-       gender = excluded.gender, looking_for = excluded.looking_for, birth_date = coalesce(excluded.birth_date, users.birth_date)
-     returning id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate"`,
-    [req.phone, name, age, city, gender, lookingFor, birthToStore]
+    `insert into users (phone, name, age, city, gender, looking_for, birth_date, lat, lon, max_distance_km) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $11)
+     on conflict (phone) do update set name = excluded.name, age = excluded.age, city = coalesce(nullif(excluded.city, ''), users.city),
+       gender = excluded.gender, looking_for = excluded.looking_for, birth_date = coalesce(excluded.birth_date, users.birth_date),
+       lat = coalesce(excluded.lat, users.lat), lon = coalesce(excluded.lon, users.lon),
+       max_distance_km = case when $10::boolean then excluded.max_distance_km else users.max_distance_km end
+     returning id, name, age, city, gender, looking_for as "lookingFor", (verified_at is not null) as verified, (id_verified_at is not null) as "idVerified", (photo is not null) as "hasPhoto", to_char(birth_date, 'YYYY-MM-DD') as "birthDate", max_distance_km as "maxDistanceKm"`,
+    [req.phone, name, age, place ?? "", gender, lookingFor, birthToStore, lat, lon, hasMax, maxKm]
   );
   res.json(rows[0]);
 }));
@@ -402,7 +441,7 @@ api.get("/admin", (_req, res) => {
 <title>Reports</title><body style="font-family:sans-serif;margin:12px;max-width:640px">
 <h2>Reports</h2><input id="k" type="password" placeholder="Admin key" style="padding:8px">
 <button id="go" style="padding:8px">Load</button>
-<h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="taddp" style="padding:8px">Add 12 test users with photo</button> <button id="tdel" style="padding:8px">Delete test users</button>
+<h3>Test users</h3><button id="tadd" style="padding:8px">Add 12 test users</button> <button id="taddp" style="padding:8px">Add 12 test users with photo</button> <button id="tnear" style="padding:8px">Add 12 test users near me (with photo)</button> <button id="tdel" style="padding:8px">Delete test users</button>
 <button id="tpho" style="padding:8px;margin-top:6px">Give test users photos</button>
 <h3>Delete an account by phone</h3><input id="ph" placeholder="Phone number" style="padding:8px"><button id="del" style="padding:8px">Delete</button><div id="tbox"></div><div id="out"></div><script src="/admin.js"></script></body>`);
 });
@@ -498,10 +537,10 @@ async function load() {
   }
 }
 document.getElementById("go").onclick = load;
-async function testUsers(method, withPhotos) {
+async function testUsers(method, withPhotos, where) {
   key = document.getElementById("k").value; sessionStorage.setItem("k", key);
   try {
-    const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12, withPhotos: withPhotos === true }) : undefined });
+    const r = await fetch("/admin/test-users", { method, headers: { "x-admin-key": key, "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ count: 12, withPhotos: withPhotos === true, lat: where ? where.latitude : undefined, lon: where ? where.longitude : undefined }) : undefined });
     const b = await r.json();
     alert(r.ok ? (b.added !== undefined ? "Added " + b.added : "Deleted " + b.deleted) : b.error);
     load();
@@ -509,6 +548,10 @@ async function testUsers(method, withPhotos) {
 }
 document.getElementById("tadd").onclick = () => testUsers("POST", false);
 document.getElementById("taddp").onclick = () => testUsers("POST", true);
+document.getElementById("tnear").onclick = () => {
+  if (!navigator.geolocation) { alert("This browser can't share your location."); return; }
+  navigator.geolocation.getCurrentPosition((pos) => testUsers("POST", true, pos.coords), (err) => alert("Location is off: " + err.message));
+};
 document.getElementById("tdel").onclick = () => testUsers("DELETE");
 document.getElementById("tpho").onclick = async () => {
   key = document.getElementById("k").value; sessionStorage.setItem("k", key);
@@ -575,19 +618,34 @@ const TEST_NAMES = {
   woman: ["Mia", "Emma", "Sofia", "Lily", "Nora", "Zoe", "Ava", "Chloe", "Grace", "Ella"],
   man: ["Liam", "Noah", "Ethan", "Lucas", "Leo", "Max", "Adam", "Ryan", "Jack", "Ben"]
 };
-const TEST_CITIES = ["London", "Berlin", "Paris", "Madrid", "Rome", "Toronto", "Sydney", "Singapore"];
+const TEST_CITIES = [
+  { name: "London, United Kingdom", lat: 51.51, lon: -0.13 }, { name: "Berlin, Germany", lat: 52.52, lon: 13.4 },
+  { name: "Paris, France", lat: 48.86, lon: 2.35 }, { name: "Madrid, Spain", lat: 40.42, lon: -3.7 },
+  { name: "Rome, Italy", lat: 41.9, lon: 12.5 }, { name: "Toronto, Canada", lat: 43.65, lon: -79.38 },
+  { name: "Sydney, Australia", lat: -33.87, lon: 151.21 }, { name: "Singapore, Singapore", lat: 1.35, lon: 103.82 }
+];
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 // Fake people for testing. They like you back, answer chat messages, and only appear when SHOW_TEST_USERS=on.
 api.post("/admin/test-users", adminLimit, admin, wrap(async (req, res) => {
   const count = Math.min(Math.max(Number(req.body?.count) || 12, 1), 40);
   const withPhotos = req.body?.withPhotos === true;
+  // With lat and lon (the admin page can send where you are), the test users are placed within about 20 km of that spot.
+  const nearLat = Number(req.body?.lat);
+  const nearLon = Number(req.body?.lon);
+  const near = req.body?.lat != null && Number.isFinite(nearLat) && Number.isFinite(nearLon);
+  const nearName = near ? ((await lookupPlace(nearLat, nearLon)) ?? "Nearby") : null;
   for (let i = 0; i < count; i++) {
     const gender = i % 2 === 0 ? "woman" : "man";
     const lookingFor = Math.floor(i / 2) % 2 === 0 ? "men" : "women"; // all four combinations, so everyone sees some
     const ins = await pool.query(
-      "insert into users (phone, name, age, city, gender, looking_for, is_test) values ($1, $2, $3, $4, $5, $6, true) returning id",
-      ["test-" + crypto.randomUUID(), pick(TEST_NAMES[gender]), 20 + Math.floor(Math.random() * 21), pick(TEST_CITIES), gender, lookingFor]
+      "insert into users (phone, name, age, city, gender, looking_for, is_test, lat, lon) values ($1, $2, $3, $4, $5, $6, true, $7, $8) returning id",
+      (() => {
+        const c = near ? null : pick(TEST_CITIES);
+        const lat = near ? nearLat + (Math.random() - 0.5) * 0.35 : c.lat;
+        const lon = near ? nearLon + (Math.random() - 0.5) * 0.35 : c.lon;
+        return ["test-" + crypto.randomUUID(), pick(TEST_NAMES[gender]), 20 + Math.floor(Math.random() * 21), near ? nearName : c.name, gender, lookingFor, lat, lon];
+      })()
     );
     if (withPhotos) await giveTestPhotos(ins.rows[0].id);
   }
@@ -655,21 +713,28 @@ api.delete("/admin/photos/:id", adminLimit, admin, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Distance in whole kilometres between two people (rounded up), or null if either has no location.
+const distanceKm = (u, me) => `case when ${u}.lat is null or ${me}.lat is null then null else
+  ceil(6371 * 2 * asin(sqrt(least(1, power(sin(radians(${u}.lat - ${me}.lat) / 2), 2)
+    + cos(radians(${me}.lat)) * cos(radians(${u}.lat)) * power(sin(radians(${u}.lon - ${me}.lon) / 2), 2)))))::int end`;
+
 // ----- discover -----
 api.get("/deck", auth, needUser, wrap(async (req, res) => {
   // Both sides must fit: I want their gender, and they want mine.
   const { rows } = await pool.query(
     `select u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v,
             (u.verified_at is not null) as verified,
+            ${distanceKm("u", "me")} as distance_km,
             (select coalesce(json_agg(p.id order by p.id), '[]'::json) from photos p where p.user_id = u.id) as extra_photos
      from users u join users me on me.id = $1
      where u.id <> me.id and (u.photo is not null or u.is_test) and (not u.is_test or $2::boolean) and u.gender is not null and u.looking_for in ('men', 'women')
        and u.gender = case me.looking_for when 'men' then 'man' else 'woman' end
        and me.gender = case u.looking_for when 'men' then 'man' else 'woman' end
        and not u.banned
+       and (me.max_distance_km is null or me.lat is null or (u.lat is not null and ${distanceKm("u", "me")} <= me.max_distance_km))
        and not exists (select 1 from swipes s where s.from_id = me.id and s.to_id = u.id)
        and not exists (select 1 from blocks bl where (bl.blocker = me.id and bl.blocked = u.id) or (bl.blocker = u.id and bl.blocked = me.id))
-     order by random() limit 20`,
+     order by distance_km nulls last, random() limit 20`, // nearest first
     [req.userId, process.env.SHOW_TEST_USERS === "on"]
   );
   res.json(rows);
@@ -727,8 +792,10 @@ api.get("/matches", auth, needUser, wrap(async (req, res) => {
     `select m.id as match_id, u.id, u.name, u.age, u.city, case when u.photo is null then null else u.photo_v end as photo_v,
             (u.verified_at is not null) as verified,
             (select coalesce(json_agg(p.id order by p.id), '[]'::json) from photos p where p.user_id = u.id) as extra_photos,
+            ${distanceKm("u", "me")} as distance_km,
             (select body from messages where match_id = m.id order by id desc limit 1) as last_message
      from matches m join users u on u.id = case when m.a = $1 then m.b else m.a end
+     join users me on me.id = $1
      where (m.a = $1 or m.b = $1) and not u.banned
      order by m.created_at desc`,
     [req.userId]

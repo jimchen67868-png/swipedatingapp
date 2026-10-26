@@ -92,6 +92,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshMatches()
     }
 
+    /** Starts the deck again, for example after the maximum distance was changed. */
+    fun reloadDeck() {
+        _deck.value = emptyList()
+        loadDeck()
+    }
+
     private fun loadDeck() {
         viewModelScope.launch {
             repo.deck()

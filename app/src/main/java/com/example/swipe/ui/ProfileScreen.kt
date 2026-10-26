@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.swipe.data.Profile
+import com.example.swipe.data.distanceText
 
 /** A person's full profile: all their photos (swipe sideways), name, age, city and the verified badge. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -98,7 +99,7 @@ fun ProfileScreen(
                         VerifiedBadge()
                     }
                 }
-                Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                Text(listOfNotNull(profile.city, distanceText(profile.distanceKm)).joinToString(" - "), color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                 subtitle?.let { Text(it, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp) }
             }
         }

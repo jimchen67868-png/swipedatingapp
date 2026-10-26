@@ -35,6 +35,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.swipe.data.Profile
+import com.example.swipe.data.distanceText
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -187,7 +188,7 @@ private fun ProfileCard(
                     VerifiedBadge()
                 }
             }
-            Text(profile.city, color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+            Text(listOfNotNull(profile.city, distanceText(profile.distanceKm)).joinToString(" - "), color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
         }
         // Swiping right shows a heart, swiping left shows a cross. They fade in as the card is dragged.
         StampIcon(Icons.Filled.Favorite, LikeGreen, likeAlpha, Modifier.align(Alignment.Center))

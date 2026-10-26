@@ -61,11 +61,25 @@ private suspend fun cityFromLocation(context: Context, lat: Double, lon: Double)
             geocoder.getFromLocation(lat, lon, 1)
         }
         val a = list?.firstOrNull()
-        a?.locality ?: a?.subAdminArea ?: a?.adminArea
+        val place = a?.locality ?: a?.subAdminArea ?: a?.adminArea
+        val country = a?.countryName
+        when {
+            place != null && country != null -> "$place, $country"
+            place != null -> place
+            else -> country
+        }?.take(50)
     }.getOrNull()
 }
 
-/** The name of the city the phone is in, or null if it can't be found. Needs the location permission. */
+class Place(val lat: Double, val lon: Double, val name: String?)
+
+/** Where the phone is: coordinates (sent to the server) and a name for showing on screen. */
+suspend fun findPlace(context: Context): Place? {
+    val loc = currentLocation(context) ?: return null
+    return Place(loc.latitude, loc.longitude, cityFromLocation(context, loc.latitude, loc.longitude))
+}
+
+/** City and country where the phone is, like "Paris, France", or null if it can't be found. Needs the location permission. */
 suspend fun findCity(context: Context): String? {
     val loc = currentLocation(context) ?: return null
     return cityFromLocation(context, loc.latitude, loc.longitude)

@@ -66,6 +66,9 @@ alter table users add column if not exists gender text check (gender in ('man', 
 alter table users add column if not exists banned boolean not null default false;
 alter table users add column if not exists is_test boolean not null default false;
 alter table users add column if not exists birth_date date;
+alter table users add column if not exists max_distance_km int;
+alter table users add column if not exists lat double precision;
+alter table users add column if not exists lon double precision;
 alter table users add column if not exists verified_at timestamptz;
 alter table users add column if not exists id_verified_at timestamptz;
 alter table users add column if not exists photo bytea;
