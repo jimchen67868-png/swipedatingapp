@@ -125,16 +125,20 @@ async function lookupPlace(lat, lon, lang = "") {
   return null;
 }
 
-// The phone names the place itself (for example in the person's own language). That name is used only if it really is a
-// place at these coordinates, meaning every part of it appears in what the lookup found. Otherwise the lookup's own name is used.
+// The phone names the place itself (for example in the person's own language, or as a city where the map data says district).
+// That name is kept when it is plain text and its country matches the country found for the coordinates. If it doesn't, the
+// lookup's own name is used. The place part can differ between map services, so only the country has to agree.
 const plain = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 function acceptPhoneName(phoneName, found) {
   if (typeof phoneName !== "string") return null;
-  const bits = phoneName.split(",").map(plain).filter(Boolean);
-  if (bits.length === 0 || bits.length > 2) return null;
+  const parts = phoneName.split(",").map((x) => x.trim()).filter(Boolean);
+  if (parts.length === 0 || parts.length > 2) return null;
+  if (!parts.every((x) => x.length <= 40 && /^[\p{L}\p{M}\s.'()\-]+$/u.test(x))) return null; // letters only: no digits, links or symbols
   const known = found.parts.map(plain).filter(Boolean);
   const same = (a, b) => a === b || (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a)));
-  return bits.every((b) => known.some((k) => same(k, b))) ? phoneName.trim().slice(0, 50) : null;
+  // Two parts: the last is the country and must agree. One part: it must be found in the lookup.
+  const mustMatch = plain(parts[parts.length - 1]);
+  return known.some((k) => same(k, mustMatch)) ? parts.join(", ").slice(0, 50) : null;
 }
 
 api.put("/me", auth, wrap(async (req, res) => {
@@ -189,7 +193,9 @@ api.put("/me", auth, wrap(async (req, res) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return bad(res, "Invalid location.");
     const found = await lookupPlace(lat, lon, String(req.body.lang ?? ""));
     if (!found) return bad(res, "We couldn't look up your location. Please try again.", 503);
-    place = acceptPhoneName(req.body.city, found) ?? found.name;
+    const kept = acceptPhoneName(req.body.city, found);
+    console.log(`place name: phone="${String(req.body.city).slice(0, 60)}" lookup="${found.name}" -> ${kept ? "kept phone name" : "used lookup name"}`);
+    place = kept ?? found.name;
     lat = Math.round(lat * 100) / 100; // about 1 km: enough for distance later, not exact enough to find a home
     lon = Math.round(lon * 100) / 100;
   } else if (!cur) {
